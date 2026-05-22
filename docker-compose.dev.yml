@@ -1,0 +1,33 @@
+# Development override — hot-reload for frontend and backend.
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This overrides the production images with dev versions that:
+# - mount source code for live reload
+# - run dev servers instead of production builds
+
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+      - backend_data:/app/data
+
+volumes:
+  frontend_node_modules:
+  frontend_next:
+  backend_data:

@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 224 45% 5%;
+  --foreground: 0 0% 100%;
+  --border: 0 0% 100% / 0.14;
+  --input: 0 0% 100% / 0.14;
+  --ring: 187 92% 69%;
+  --primary: 329 84% 60%;
+  --primary-foreground: 222 47% 5%;
+  --secondary: 222 47% 12%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 222 47% 12%;
+  --muted-foreground: 215 24% 74%;
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: #05070d;
+}
+
+body {
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(236, 72, 153, 0.16), transparent 34rem),
+    radial-gradient(circle at 88% 8%, rgba(37, 99, 235, 0.15), transparent 32rem),
+    linear-gradient(180deg, #05070d 0%, #070a12 45%, #03050a 100%);
+  color: white;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: rgba(236, 72, 153, 0.42);
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #05070d;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid #05070d;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(236, 72, 153, 0.7), rgba(34, 211, 238, 0.58));
+}
+
+/* Skip navigation link — visually hidden until focused */
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  background: #22d3ee;
+  color: #030712;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.skip-link:focus-visible {
+  top: 1rem;
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+@layer components {
+  .premium-panel {
+    @apply rounded-[1.75rem] border border-white/10 bg-white/[0.055] shadow-[0_28px_110px_rgba(0,0,0,.48)] backdrop-blur-2xl;
+  }
+
+  .premium-panel-soft {
+    @apply rounded-[1.5rem] border border-white/10 bg-white/[0.045] shadow-[0_18px_70px_rgba(0,0,0,.30)] backdrop-blur-xl;
+  }
+
+  .cinema-eyebrow {
+    @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-100;
+  }
+
+  .glass-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-xl transition duration-200;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

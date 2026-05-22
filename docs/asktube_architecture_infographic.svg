@@ -1,0 +1,261 @@
+<svg width="1600" height="1100" viewBox="0 0 1600 1100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">AskTube AI Project Architecture Infographic</title>
+  <desc id="desc">A cinematic dark-mode architecture diagram showing AskTube AI frontend, backend, AI pipeline, vector database, observability, Docker, deployment, and the technologies used in each layer.</desc>
+
+  <defs>
+    <radialGradient id="bgGlowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(210 130) rotate(41) scale(650 520)">
+      <stop stop-color="#EC4899" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#05070D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgGlowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1320 160) rotate(132) scale(680 520)">
+      <stop stop-color="#22D3EE" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#05070D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bgGlowC" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(900 950) rotate(90) scale(760 520)">
+      <stop stop-color="#6366F1" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#05070D" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.035"/>
+    </linearGradient>
+    <linearGradient id="pinkCyan" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#F43F5E"/>
+      <stop offset="0.52" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#60A5FA"/>
+    </linearGradient>
+    <linearGradient id="softLine" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#EC4899" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#22D3EE" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#EC4899" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glowCyan" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#22D3EE" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glowPink" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#EC4899" flood-opacity="0.4"/>
+    </filter>
+    <style>
+      .title { font: 900 52px Inter, ui-sans-serif, system-ui, sans-serif; fill: #fff; }
+      .subtitle { font: 500 20px Inter, ui-sans-serif, system-ui, sans-serif; fill: #CBD5E1; }
+      .section-title { font: 850 24px Inter, ui-sans-serif, system-ui, sans-serif; fill: #fff; }
+      .section-kicker { font: 800 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #A5F3FC; letter-spacing: 3px; }
+      .body { font: 600 16px Inter, ui-sans-serif, system-ui, sans-serif; fill: #E2E8F0; }
+      .muted { font: 500 14px Inter, ui-sans-serif, system-ui, sans-serif; fill: #94A3B8; }
+      .tiny { font: 750 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #0B1020; }
+      .chip { font: 800 13px Inter, ui-sans-serif, system-ui, sans-serif; fill: #F8FAFC; }
+      .flow { font: 800 13px Inter, ui-sans-serif, system-ui, sans-serif; fill: #CFFAFE; }
+      .panel { fill: url(#panel); stroke: rgba(255,255,255,0.13); stroke-width: 1.2; }
+      .small-panel { fill: rgba(2,6,23,0.45); stroke: rgba(255,255,255,0.12); stroke-width: 1; }
+      .line { stroke: url(#softLine); stroke-width: 3; stroke-linecap: round; }
+      .arrow { stroke: #67E8F9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#67E8F9"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="1100" fill="#05070D"/>
+  <rect width="1600" height="1100" fill="url(#bgGlowA)"/>
+  <rect width="1600" height="1100" fill="url(#bgGlowB)"/>
+  <rect width="1600" height="1100" fill="url(#bgGlowC)"/>
+  <path d="M0 230H1600M0 430H1600M0 630H1600M0 830H1600M200 0V1100M400 0V1100M600 0V1100M800 0V1100M1000 0V1100M1200 0V1100M1400 0V1100" stroke="white" stroke-opacity="0.035"/>
+
+  <g transform="translate(70 60)">
+    <rect x="0" y="0" width="1460" height="118" rx="34" class="panel" filter="url(#shadow)"/>
+    <circle cx="58" cy="59" r="25" fill="url(#pinkCyan)" filter="url(#glowPink)"/>
+    <path d="M50 46L73 59L50 72V46Z" fill="white"/>
+    <text x="102" y="55" class="title">AskTube AI Architecture</text>
+    <text x="104" y="87" class="subtitle">Cinematic YouTube learning platform powered by search, transcripts, RAG, ChromaDB, LangChain, Whisper, FastAPI, Next.js, and Docker</text>
+    <g transform="translate(1160 36)">
+      <rect width="238" height="46" rx="23" fill="rgba(34,211,238,0.12)" stroke="rgba(103,232,249,0.35)"/>
+      <circle cx="27" cy="23" r="6" fill="#34D399" filter="url(#glowCyan)"/>
+      <text x="46" y="29" class="chip">Transcript-first AI SaaS</text>
+    </g>
+  </g>
+
+  <g transform="translate(70 220)">
+    <rect width="330" height="300" rx="30" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="44" class="section-kicker">FRONTEND</text>
+    <text x="28" y="78" class="section-title">Next.js Experience</text>
+    <text x="28" y="112" class="muted">User-facing cinematic learning UI</text>
+    <g transform="translate(28 140)">
+      <rect width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="22" class="chip">Next.js 14</text>
+      <rect x="146" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="22" class="chip">TypeScript</text>
+      <rect y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="68" class="chip">TailwindCSS</text>
+      <rect x="146" y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="68" class="chip">shadcn/ui</text>
+      <rect y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="114" class="chip">Framer Motion</text>
+      <rect x="146" y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="114" class="chip">Embla</text>
+      <rect y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="160" class="chip">Three.js</text>
+      <rect x="146" y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="160" class="chip">React 3 Fiber</text>
+    </g>
+    <text x="28" y="278" class="muted">Landing • search • carousel • 3D assistant • chat workspace</text>
+  </g>
+
+  <g transform="translate(455 220)">
+    <rect width="330" height="300" rx="30" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="44" class="section-kicker">BACKEND</text>
+    <text x="28" y="78" class="section-title">FastAPI Services</text>
+    <text x="28" y="112" class="muted">Async API layer and orchestration</text>
+    <g transform="translate(28 140)">
+      <rect width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="22" class="chip">FastAPI</text>
+      <rect x="146" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="22" class="chip">Python</text>
+      <rect y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="68" class="chip">WebSocket</text>
+      <rect x="146" y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="68" class="chip">Pydantic</text>
+      <rect y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="114" class="chip">YouTube API</text>
+      <rect x="146" y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="114" class="chip">Transcripts</text>
+      <rect y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="160" class="chip">Whisper</text>
+      <rect x="146" y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="160" class="chip">Async Routes</text>
+    </g>
+    <text x="28" y="278" class="muted">Search • transcript extraction • processing • streaming</text>
+  </g>
+
+  <g transform="translate(840 220)">
+    <rect width="330" height="300" rx="30" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="44" class="section-kicker">AI PIPELINE</text>
+    <text x="28" y="78" class="section-title">LangChain RAG</text>
+    <text x="28" y="112" class="muted">Transcript-only answering flow</text>
+    <g transform="translate(28 140)">
+      <rect width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="22" class="chip">LangChain</text>
+      <rect x="146" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="22" class="chip">RAG</text>
+      <rect y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="68" class="chip">Embeddings</text>
+      <rect x="146" y="46" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="68" class="chip">Retrieval</text>
+      <rect y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="114" class="chip">Memory</text>
+      <rect x="146" y="92" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="114" class="chip">Citations</text>
+      <rect y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="160" class="chip">Summaries</text>
+      <rect x="146" y="138" width="128" height="34" rx="17" class="small-panel"/>
+      <text x="162" y="160" class="chip">Study Notes</text>
+    </g>
+    <text x="28" y="278" class="muted">Retrieve chunks • inject context • answer with timestamps</text>
+  </g>
+
+  <g transform="translate(1225 220)">
+    <rect width="305" height="300" rx="30" class="panel" filter="url(#shadow)"/>
+    <text x="28" y="44" class="section-kicker">DATA</text>
+    <text x="28" y="78" class="section-title">Vector Storage</text>
+    <text x="28" y="112" class="muted">Transcript evidence and metadata</text>
+    <g transform="translate(28 140)">
+      <rect width="120" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="22" class="chip">ChromaDB</text>
+      <rect x="136" width="112" height="34" rx="17" class="small-panel"/>
+      <text x="152" y="22" class="chip">Vectors</text>
+      <rect y="46" width="120" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="68" class="chip">Chunks</text>
+      <rect x="136" y="46" width="112" height="34" rx="17" class="small-panel"/>
+      <text x="152" y="68" class="chip">Timestamps</text>
+      <rect y="92" width="120" height="34" rx="17" class="small-panel"/>
+      <text x="16" y="114" class="chip">Metadata</text>
+      <rect x="136" y="92" width="112" height="34" rx="17" class="small-panel"/>
+      <text x="152" y="114" class="chip">Sessions</text>
+    </g>
+    <text x="28" y="278" class="muted">Video ID • text • start/end time • source</text>
+  </g>
+
+  <path d="M410 370H445" class="arrow" marker-end="url(#arrowHead)"/>
+  <path d="M795 370H830" class="arrow" marker-end="url(#arrowHead)"/>
+  <path d="M1180 370H1215" class="arrow" marker-end="url(#arrowHead)"/>
+
+  <g transform="translate(145 590)">
+    <rect width="1310" height="300" rx="34" class="panel" filter="url(#shadow)"/>
+    <text x="42" y="50" class="section-kicker">END-TO-END USER AND AI FLOW</text>
+    <text x="42" y="86" class="section-title">From YouTube Search to Timestamped AI Answer</text>
+
+    <g transform="translate(55 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(244,63,94,0.16)" stroke="rgba(251,113,133,0.35)"/>
+      <text x="24" y="38" class="flow">1. Search</text>
+      <text x="24" y="66" class="muted">Text + voice</text>
+    </g>
+    <path d="M220 175H282" class="arrow" marker-end="url(#arrowHead)"/>
+
+    <g transform="translate(295 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(34,211,238,0.13)" stroke="rgba(103,232,249,0.35)"/>
+      <text x="24" y="38" class="flow">2. Results</text>
+      <text x="24" y="66" class="muted">Netflix carousel</text>
+    </g>
+    <path d="M460 175H522" class="arrow" marker-end="url(#arrowHead)"/>
+
+    <g transform="translate(535 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(99,102,241,0.16)" stroke="rgba(129,140,248,0.38)"/>
+      <text x="24" y="38" class="flow">3. Process</text>
+      <text x="24" y="66" class="muted">Transcript + chunks</text>
+    </g>
+    <path d="M700 175H762" class="arrow" marker-end="url(#arrowHead)"/>
+
+    <g transform="translate(775 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(20,184,166,0.15)" stroke="rgba(94,234,212,0.34)"/>
+      <text x="24" y="38" class="flow">4. Embed</text>
+      <text x="24" y="66" class="muted">Store vectors</text>
+    </g>
+    <path d="M940 175H1002" class="arrow" marker-end="url(#arrowHead)"/>
+
+    <g transform="translate(1015 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(236,72,153,0.15)" stroke="rgba(244,114,182,0.36)"/>
+      <text x="24" y="38" class="flow">5. Retrieve</text>
+      <text x="24" y="66" class="muted">Relevant chunks</text>
+    </g>
+    <path d="M1180 175H1242" class="arrow" marker-end="url(#arrowHead)"/>
+
+    <g transform="translate(1255 126)">
+      <rect width="156" height="98" rx="26" fill="rgba(250,204,21,0.14)" stroke="rgba(253,224,71,0.34)"/>
+      <text x="24" y="38" class="flow">6. Answer</text>
+      <text x="24" y="66" class="muted">Cited response</text>
+    </g>
+
+    <g transform="translate(55 248)">
+      <rect width="1195" height="1.5" fill="url(#softLine)"/>
+      <text x="0" y="35" class="muted">Core rule: the assistant answers only from transcript context and includes timestamp citations for source-backed claims.</text>
+    </g>
+  </g>
+
+  <g transform="translate(70 940)">
+    <rect width="450" height="100" rx="28" class="panel"/>
+    <text x="28" y="40" class="section-kicker">OBSERVABILITY</text>
+    <text x="28" y="72" class="body">LangSmith tracing • RAG debugging • latency analysis • hallucination checks</text>
+  </g>
+
+  <g transform="translate(575 940)">
+    <rect width="450" height="100" rx="28" class="panel"/>
+    <text x="28" y="40" class="section-kicker">CONTAINERS</text>
+    <text x="28" y="72" class="body">Docker • Docker Compose • frontend/backend services • ChromaDB volume</text>
+  </g>
+
+  <g transform="translate(1080 940)">
+    <rect width="450" height="100" rx="28" class="panel"/>
+    <text x="28" y="40" class="section-kicker">DEPLOYMENT</text>
+    <text x="28" y="72" class="body">Local dev • production images • Render/Railway-ready architecture</text>
+  </g>
+
+  <g transform="translate(70 550)">
+    <path d="M0 0H1460" class="line"/>
+  </g>
+
+  <g transform="translate(1320 1048)">
+    <text class="muted">AskTube AI • Full-stack learning architecture</text>
+  </g>
+</svg>

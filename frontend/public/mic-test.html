@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AskTube - Microphone Diagnostic</title>
+  <style>
+    body { font-family: monospace; background: #0b0f19; color: #e2e8f0; margin: 0; padding: 24px; }
+    h1 { color: #22d3ee; margin-bottom: 4px; }
+    p.sub { color: #64748b; margin-top: 0; margin-bottom: 24px; }
+    .card { background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: .1em; }
+    button {
+      background: #22d3ee; color: #000; border: none; border-radius: 8px;
+      padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; margin-right: 8px; margin-bottom: 4px;
+    }
+    button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .log { margin-top: 12px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; min-height: 24px; }
+    .ok   { color: #34d399; }
+    .err  { color: #f87171; }
+    .warn { color: #fbbf24; }
+    .info { color: #93c5fd; }
+    textarea { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; color: #e2e8f0;
+               font-family: monospace; font-size: 13px; padding: 8px; width: 100%; box-sizing: border-box;
+               resize: vertical; margin-top: 8px; }
+    #level-bar-wrap { height: 14px; background: #1e293b; border-radius: 8px; margin-top: 10px; overflow: hidden; }
+    #level-bar { height: 100%; width: 0; background: linear-gradient(90deg,#22d3ee,#ec4899); border-radius: 8px; transition: width .05s; }
+    .alert-box { background: #1e1000; border: 1px solid #fbbf24; border-radius: 8px; padding: 12px 16px; margin-top: 12px; color: #fbbf24; font-size: 13px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <h1>🎙 AskTube Microphone Diagnostic</h1>
+  <p class="sub">Open at <b>http://localhost:3000/mic-test.html</b> in Chrome. Run each step in order.</p>
+
+  <!-- Diagnosis banner - shown when silence is detected -->
+  <div id="banner" class="alert-box" style="display:none">
+    ⚠ <b>Silence detected</b> - the microphone is connected but Chrome is capturing no audio.<br><br>
+    <b>Most likely cause on Windows: another app (Zoom, Teams, Discord) has exclusive control of the microphone.</b><br><br>
+    <b>Fix options (try in order):</b><br>
+    1. <b>Close Zoom / Teams / Discord</b> completely and click "Record 4 s" again.<br>
+    2. Windows Settings -> System -> Sound -> Input -> choose your mic -> <b>uncheck "Exclusive mode"</b>.<br>
+    3. Use <b>Firefox</b> instead of Chrome - Firefox uses a different audio stack that bypasses exclusive mode.<br>
+    4. Restart Chrome after closing other audio apps.
+  </div>
+
+  <!-- Step 1 -->
+  <div class="card">
+    <h2>Step 1 - Browser capabilities</h2>
+    <button onclick="testCapabilities()">Run check</button>
+    <div class="log" id="log1"></div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card">
+    <h2>Step 2 - Microphone access + live audio level</h2>
+    <button onclick="testGetUserMedia()">Request mic &amp; check level</button>
+    <div class="log" id="log2"></div>
+    <div id="level-bar-wrap" style="display:none"><div id="level-bar"></div></div>
+    <p id="level-txt" style="font-size:12px;color:#64748b;margin:4px 0 0;display:none">Speak - level meter should move</p>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card">
+    <h2>Step 3 - MediaRecorder: record 4 seconds</h2>
+    <button id="btn3a" onclick="testMediaRecorder(false)">Record 4 s (default)</button>
+    <button id="btn3b" onclick="testMediaRecorder(true)" style="background:#a78bfa">Record 4 s (no echo cancel)</button>
+    <div class="log" id="log3"></div>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="card">
+    <h2>Step 4 - Whisper API: send recording to backend</h2>
+    <button id="btn4" onclick="testWhisper()" disabled>Send to Whisper</button>
+    <div class="log" id="log4"></div>
+    <textarea id="transcript" rows="3" placeholder="Transcript will appear here..." readonly></textarea>
+  </div>
+
+  <!-- Step 6 - Voice list -->
+  <div class="card">
+    <h2>Step 6 - TTS voices available in this browser</h2>
+    <button onclick="listVoices()">List voices</button>
+    <div class="log" id="log6"></div>
+    <p style="font-size:12px;color:#64748b;margin-top:8px">Copy the list and share it - I will hardcode the correct male voice name.</p>
+    <div id="voice-buttons" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="card">
+    <h2>Step 5 - Web Speech API (Chrome built-in)</h2>
+    <button id="btn5" onclick="testWebSpeech()">Start (5 s)</button>
+    <div class="log" id="log5"></div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin.replace(':3000', ':8000');
+    let recordedBlob = null;
+    let levelRaf = null;
+
+    function log(id, cls, msg) {
+      const el = document.getElementById(id);
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = new Date().toLocaleTimeString() + '  ' + msg + '\n';
+      el.appendChild(span);
+    }
+
+    // -- Step 1 -------------------------------------------------------------
+    function testCapabilities() {
+      document.getElementById('log1').innerHTML = '';
+      const l = (c, m) => log('log1', c, m);
+      l('info', 'User agent: ' + navigator.userAgent.substring(0, 100));
+      l(navigator.mediaDevices ? 'ok' : 'err', 'mediaDevices: ' + (navigator.mediaDevices ? 'YES' : 'NO'));
+      l(typeof MediaRecorder !== 'undefined' ? 'ok' : 'err', 'MediaRecorder: ' + (typeof MediaRecorder !== 'undefined' ? 'YES' : 'NO'));
+      const codecs = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
+      codecs.forEach(c => l(MediaRecorder.isTypeSupported(c) ? 'ok' : 'warn', 'supported "' + c + '": ' + MediaRecorder.isTypeSupported(c)));
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      l(SR ? 'ok' : 'warn', 'SpeechRecognition: ' + (SR ? 'YES' : 'NO'));
+      l('info', 'protocol: ' + location.protocol);
+    }
+
+    // -- Step 2 -------------------------------------------------------------
+    async function testGetUserMedia() {
+      document.getElementById('log2').innerHTML = '';
+      if (levelRaf) { cancelAnimationFrame(levelRaf); levelRaf = null; }
+      const l = (c, m) => log('log2', c, m);
+      l('info', 'Requesting microphone...');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const tracks = stream.getAudioTracks();
+        l('ok', '✓ Granted: ' + (tracks[0]?.label || 'unknown device'));
+        l('info', 'Settings: ' + JSON.stringify(tracks[0]?.getSettings() || {}));
+
+        // Audio level meter
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const bar = document.getElementById('level-bar');
+        const wrap = document.getElementById('level-bar-wrap');
+        const txt = document.getElementById('level-txt');
+        wrap.style.display = 'block';
+        txt.style.display = 'block';
+
+        let maxSeen = 0;
+        let frames = 0;
+        function tick() {
+          analyser.getByteFrequencyData(data);
+          const avg = data.reduce((a, b) => a + b, 0) / data.length;
+          if (avg > maxSeen) maxSeen = avg;
+          frames++;
+          bar.style.width = Math.min(100, avg * 3) + '%';
+          if (frames < 200) {
+            levelRaf = requestAnimationFrame(tick);
+          } else {
+            stream.getTracks().forEach(t => t.stop());
+            ctx.close();
+            wrap.style.display = 'none';
+            txt.style.display = 'none';
+            if (maxSeen < 2) {
+              l('err', '✗ Level meter never moved (max=' + maxSeen.toFixed(1) + '). Mic is connected but capturing silence.');
+              l('warn', '-> Close Zoom/Teams/Discord and try again, or use Firefox.');
+              document.getElementById('banner').style.display = 'block';
+            } else {
+              l('ok', '✓ Audio level detected (max=' + maxSeen.toFixed(1) + '). Microphone is working.');
+              document.getElementById('banner').style.display = 'none';
+            }
+          }
+        }
+        tick();
+        l('info', 'Monitoring level for ~4 seconds. Speak now...');
+      } catch (e) {
+        l('err', '✗ ' + e.name + ': ' + e.message);
+        if (e.name === 'NotAllowedError') l('warn', '-> Allow microphone in Chrome settings.');
+        if (e.name === 'NotFoundError')   l('warn', '-> No microphone detected.');
+      }
+    }
+
+    // -- Step 3 -------------------------------------------------------------
+    async function testMediaRecorder(noProcessing) {
+      document.getElementById('log3').innerHTML = '';
+      document.getElementById('btn4').disabled = true;
+      recordedBlob = null;
+      const l = (c, m) => log('log3', c, m);
+      document.getElementById('btn3a').disabled = true;
+      document.getElementById('btn3b').disabled = true;
+
+      const constraints = noProcessing
+        ? { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }
+        : { audio: true };
+      l('info', 'Constraints: ' + JSON.stringify(constraints.audio));
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        l('ok', '✓ Stream: ' + stream.getAudioTracks()[0]?.label);
+
+        const codecs = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg','audio/mp4'];
+        const mimeType = codecs.find(c => MediaRecorder.isTypeSupported(c)) || '';
+        l('info', 'MIME type: ' + (mimeType || 'browser default'));
+
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        const chunks = [];
+        let totalBytes = 0;
+
+        recorder.ondataavailable = e => {
+          if (e.data.size > 0) {
+            chunks.push(e.data);
+            totalBytes += e.data.size;
+            l('info', 'Chunk: ' + e.data.size + ' bytes (total: ' + totalBytes + ')');
+          }
+        };
+        recorder.onerror = e => l('err', 'Recorder error: ' + e.error);
+
+        recorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          recordedBlob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+          l('ok', '✓ Stopped. Total: ' + recordedBlob.size + ' bytes');
+
+          const kbps = (recordedBlob.size / 1024 / 4).toFixed(1);
+          l('info', 'Effective rate: ~' + kbps + ' KB/s (expected 8-40 KB/s for real audio)');
+
+          if (recordedBlob.size < 3000) {
+            l('err', '✗ Still capturing silence (' + recordedBlob.size + ' bytes for 4s of audio).');
+            if (!noProcessing) {
+              l('warn', '-> Try "Record 4s (no echo cancel)" button - different Chrome audio path.');
+            } else {
+              l('warn', '-> Audio is not flowing from the microphone into Chrome at all.');
+              l('warn', '-> Close Zoom/Teams/Discord, then retry. Or use Firefox.');
+              document.getElementById('banner').style.display = 'block';
+            }
+          } else {
+            l('ok', '✓ Audio data captured! Proceeding to Whisper test.');
+            document.getElementById('btn4').disabled = false;
+            document.getElementById('banner').style.display = 'none';
+          }
+          document.getElementById('btn3a').disabled = false;
+          document.getElementById('btn3b').disabled = false;
+        };
+
+        recorder.start(250);
+        l('ok', '▶ Recording... SPEAK NOW for 4 seconds.');
+        let remaining = 4;
+        const t = setInterval(() => {
+          remaining--;
+          l('info', remaining + 's remaining...');
+          if (remaining <= 0) { clearInterval(t); recorder.stop(); }
+        }, 1000);
+
+      } catch (e) {
+        l('err', '✗ ' + e.name + ': ' + e.message);
+        document.getElementById('btn3a').disabled = false;
+        document.getElementById('btn3b').disabled = false;
+      }
+    }
+
+    // -- Step 4 -------------------------------------------------------------
+    async function testWhisper() {
+      document.getElementById('log4').innerHTML = '';
+      document.getElementById('transcript').value = '';
+      const l = (c, m) => log('log4', c, m);
+      if (!recordedBlob) { l('err', 'No recording. Run Step 3 first.'); return; }
+      l('info', 'Sending ' + recordedBlob.size + ' bytes to ' + API_BASE + '/api/speech/transcribe...');
+      try {
+        const form = new FormData();
+        form.append('audio', recordedBlob, 'speech.webm');
+        const res = await fetch(API_BASE + '/api/speech/transcribe', { method: 'POST', body: form });
+        const data = await res.json();
+        l('info', 'HTTP ' + res.status);
+        if (!res.ok) { l('err', '✗ ' + JSON.stringify(data)); return; }
+        const text = data.transcript || '';
+        if (!text) {
+          l('warn', '⚠ Empty transcript. Whisper detected silence or filtered a hallucination.');
+          l('warn', '-> Speak louder and closer to the mic. Recording must be > 3000 bytes.');
+        } else {
+          l('ok', '✓ Transcript: "' + text + '"');
+        }
+        document.getElementById('transcript').value = text || '(empty)';
+      } catch (e) {
+        l('err', '✗ Fetch failed: ' + e.message);
+        l('warn', '-> Is backend running at ' + API_BASE + '?');
+      }
+    }
+
+    // -- Step 6 - Voice list ------------------------------------------------
+    function listVoices() {
+      document.getElementById('log6').innerHTML = '';
+      const l = (c, m) => log('log6', c, m);
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices.length) {
+        l('warn', 'Voice list empty - click again in 1 second (they load async).');
+        return;
+      }
+      const en = voices.filter(v => v.lang.startsWith('en'));
+      l('info', 'Total voices: ' + voices.length + '  |  English voices: ' + en.length);
+      en.forEach((v, i) => l('info', i + '  ' + v.name + '  [' + v.lang + ']' + (v.localService ? ' (local)' : '')));
+      l('info', '--- non-English (sample) ---');
+      voices.filter(v => !v.lang.startsWith('en')).slice(0, 5).forEach(v => l('info', v.name + ' [' + v.lang + ']'));
+
+      // Render audition buttons for every English voice
+      const wrap = document.getElementById('voice-buttons');
+      wrap.innerHTML = '<p style="font-size:12px;color:#94a3b8;margin:0 0 6px">Click to audition each voice:</p>';
+      en.forEach(v => {
+        const btn = document.createElement('button');
+        btn.textContent = v.name;
+        btn.style.marginBottom = '6px';
+        btn.style.fontSize = '11px';
+        btn.style.padding = '5px 12px';
+        btn.onclick = () => testVoice(v.name);
+        wrap.appendChild(btn);
+      });
+    }
+
+    function testVoice(name) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance('Hello, I am AskTube AI, your YouTube learning assistant.');
+      const voices = window.speechSynthesis.getVoices();
+      const v = voices.find(x => x.name === name);
+      if (v) { u.voice = v; u.pitch = 0.8; u.rate = 0.95; }
+      window.speechSynthesis.speak(u);
+    }
+
+    // -- Step 5 -------------------------------------------------------------
+    function testWebSpeech() {
+      document.getElementById('log5').innerHTML = '';
+      const l = (c, m) => log('log5', c, m);
+      const btn = document.getElementById('btn5');
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) { l('err', 'Not available in this browser.'); return; }
+      const r = new SR();
+      r.continuous = false; r.interimResults = true; r.lang = navigator.language || 'en-US';
+      l('info', 'lang: ' + r.lang);
+      btn.disabled = true;
+      r.onstart  = () => l('ok', '✓ Started. Speak...');
+      r.onend    = () => { l('info', 'Ended.'); btn.disabled = false; };
+      r.onerror  = e => {
+        l('err', '✗ Error: ' + e.error);
+        if (e.error === 'network')   l('warn', '-> Google servers unreachable. Whisper fallback will be used in the main app.');
+        if (e.error === 'no-speech') l('warn', '-> No speech detected.');
+        btn.disabled = false;
+      };
+      r.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          l(e.results[i].isFinal ? 'ok' : 'info', (e.results[i].isFinal ? '✓ FINAL: ' : '  interim: ') + t);
+        }
+      };
+      try { r.start(); } catch(e) { l('err', '✗ ' + e.message); btn.disabled = false; }
+      setTimeout(() => { try { r.stop(); } catch {} }, 5000);
+    }
+  </script>
+</body>
+</html>

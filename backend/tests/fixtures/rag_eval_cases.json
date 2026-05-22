@@ -1,0 +1,171 @@
+{
+  "version": "1.0",
+  "description": "RAG evaluation dataset for AskTube AI. All single-turn cases use video kqtD5dpn9C8 (Programming with Mosh - Python for Beginners, 1 hour), which must be ingested in ChromaDB before running.",
+  "video_id": "kqtD5dpn9C8",
+  "cases": [
+    {
+      "id": "TC-ANS-001",
+      "category": "answerable",
+      "question": "What is Python used for?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["data science", "machine learning", "web development", "automation"],
+      "check_citations": true,
+      "notes": "The transcript opening explicitly lists Python use-cases. A grounded answer must name at least one."
+    },
+    {
+      "id": "TC-ANS-002",
+      "category": "answerable",
+      "question": "How do you convert a float to a string in Python?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["str(", "str function", "convert"],
+      "check_citations": true,
+      "notes": "Type-conversion section covers str(), int(), float(), bool(). The answer should reference str()."
+    },
+    {
+      "id": "TC-ANS-003",
+      "category": "answerable",
+      "question": "What is a tuple in Python and how is it different from a list?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["immutable", "cannot be changed", "parentheses", "square brackets"],
+      "check_citations": true,
+      "notes": "Tuples section at ~57:39 distinguishes tuples from lists by immutability."
+    },
+    {
+      "id": "TC-ANS-004",
+      "category": "answerable",
+      "question": "What does the in operator do in Python?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["existence", "list", "boolean", "true", "false"],
+      "check_citations": true,
+      "notes": "The in operator for list membership is covered explicitly in the transcript."
+    },
+    {
+      "id": "TC-ANS-005",
+      "category": "answerable",
+      "question": "How are code blocks defined in Python?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["indentation", "indent", "colon"],
+      "check_citations": true,
+      "notes": "Indentation as a block delimiter is a key Python concept covered in the conditional-statements section."
+    },
+    {
+      "id": "TC-REF-001",
+      "category": "refusal",
+      "question": "What is the capital of France?",
+      "expected_behavior": "refusal",
+      "expected_contains_any": ["cannot answer", "transcript", "not contain"],
+      "check_citations": false,
+      "notes": "Completely unrelated to the Python tutorial. Must be refused."
+    },
+    {
+      "id": "TC-REF-002",
+      "category": "refusal",
+      "question": "What does the tutorial say about React.js and frontend development?",
+      "expected_behavior": "refusal",
+      "expected_contains_any": ["cannot answer", "transcript", "not contain", "does not"],
+      "check_citations": false,
+      "notes": "React.js is never mentioned in a Python beginner tutorial. Must not hallucinate."
+    },
+    {
+      "id": "TC-REF-003",
+      "category": "refusal",
+      "question": "Who is the current president of the United States?",
+      "expected_behavior": "refusal",
+      "expected_contains_any": ["cannot answer", "transcript", "not contain"],
+      "check_citations": false,
+      "notes": "Off-topic political question. Any non-refusal answer is a hallucination."
+    },
+    {
+      "id": "TC-REF-004",
+      "category": "refusal",
+      "question": "What gradient boosting algorithms does the tutorial recommend for machine learning?",
+      "expected_behavior": "refusal",
+      "expected_contains_any": ["cannot answer", "transcript", "not contain", "does not"],
+      "check_citations": false,
+      "notes": "The tutorial mentions ML as a use-case for Python but never explains ML algorithms. Specific algorithm names would be fabricated."
+    },
+    {
+      "id": "TC-CIT-001",
+      "category": "citation_accuracy",
+      "question": "When in the video does the tutorial start talking about tuples?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["57:", "58:", "59:"],
+      "check_citations": true,
+      "notes": "The tuples section starts near 57:39. The cited timestamp must be close to that range."
+    },
+    {
+      "id": "TC-CIT-002",
+      "category": "citation_accuracy",
+      "question": "What is discussed at the very start of the tutorial?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["python", "data science", "machine learning", "web"],
+      "check_citations": true,
+      "expected_citation_before_seconds": 120,
+      "notes": "The intro is at 00:00-02:00. Citations should have start_seconds < 120."
+    },
+    {
+      "id": "TC-SUM-001",
+      "category": "summary",
+      "question": "Summarize the main Python programming concepts covered in this tutorial.",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["variables", "lists", "tuples", "functions", "type", "string", "conditional"],
+      "check_citations": true,
+      "notes": "A good summary should mention multiple distinct concepts. Minimum 3 different concepts expected."
+    },
+    {
+      "id": "TC-SUM-002",
+      "category": "summary",
+      "question": "What are the key takeaways a beginner should remember after watching this video?",
+      "expected_behavior": "answer",
+      "expected_contains_any": ["python", "type", "list", "function", "variable", "string"],
+      "check_citations": true,
+      "notes": "Practical takeaway summary. Should be grounded in the transcript content."
+    },
+    {
+      "id": "TC-HAL-001",
+      "category": "hallucination_prevention",
+      "question": "What does the tutorial say about Django and Flask web frameworks?",
+      "expected_behavior": "refusal",
+      "expected_contains_any": ["cannot answer", "transcript", "not contain", "does not"],
+      "check_citations": false,
+      "notes": "Django/Flask are not covered in this tutorial. The model must not fabricate framework content."
+    },
+    {
+      "id": "TC-HAL-002",
+      "category": "hallucination_prevention",
+      "question": "What specific Python version does the instructor say to install?",
+      "expected_behavior": "answer_or_refusal",
+      "forbidden_contains": ["3.11", "3.12", "3.10", "3.9", "3.8"],
+      "check_citations": true,
+      "notes": "If the transcript mentions a version, cite it. If not, refuse. Fabricating a specific version number is a hallucination."
+    }
+  ],
+  "conversation_cases": [
+    {
+      "id": "TC-MEM-001",
+      "category": "memory",
+      "description": "Two-turn conversation: ask about data types then follow up on type conversion",
+      "turns": [
+        "What are the main data types in Python?",
+        "How do you convert between those types?"
+      ],
+      "expected_turn_1_behavior": "answer",
+      "expected_turn_2_behavior": "answer",
+      "expected_turn_2_contains_any": ["str(", "int(", "float(", "bool(", "convert"],
+      "notes": "Turn 2 should use context from turn 1. A good answer to turn 2 names the built-in conversion functions."
+    },
+    {
+      "id": "TC-MEM-002",
+      "category": "memory",
+      "description": "Two-turn: ask about tuples then ask for a specific comparison",
+      "turns": [
+        "What are tuples?",
+        "How are they different from lists?"
+      ],
+      "expected_turn_1_behavior": "answer",
+      "expected_turn_2_behavior": "answer",
+      "expected_turn_2_contains_any": ["immutable", "cannot be changed", "mutable", "square", "parenthes"],
+      "notes": "Turn 2 is only meaningful in context of turn 1. Memory must carry the tuple concept forward."
+    }
+  ]
+}
