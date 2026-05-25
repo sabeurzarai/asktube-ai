@@ -586,6 +586,7 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
     <>
       {/* The roaming robot */}
       <motion.div
+        initial={cfg.position}
         animate={cfg.position}
         transition={prefersReducedMotion
           ? { duration: 0 }

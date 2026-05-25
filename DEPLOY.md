@@ -266,7 +266,80 @@ Certificates auto-renew every 12 hours via the `certbot` sidecar container.
 
 ---
 
-## 8. Managing the Stack
+## 8. Webshare Residential Proxy (Recommended on EC2)
+
+AWS EC2 IP addresses are well-known cloud ranges. YouTube blocks transcript
+extraction from them. Without a residential proxy you will get
+`TranscriptsDisabled` or `NoTranscriptFound` errors for most videos.
+
+### Why it's needed
+
+| Environment | YouTube transcript access |
+|---|---|
+| Local machine (home IP) | Works without proxy |
+| EC2 / cloud server | Blocked — residential proxy required |
+
+### Get Webshare credentials
+
+1. Sign up at [webshare.io](https://www.webshare.io) and subscribe to a
+   **Residential** proxy plan (the cheapest tier is sufficient).
+2. Go to **Proxy** → **Residential** → **Username / Password** and copy your
+   credentials.
+3. Note the country codes you want to route through (e.g. `US`, `DE`, `GB`).
+
+### Add to `.env`
+
+```dotenv
+# Webshare residential proxy — required on EC2 for transcript extraction
+WEBSHARE_PROXY_USERNAME=<your-webshare-username>
+WEBSHARE_PROXY_PASSWORD=<your-webshare-password>
+WEBSHARE_PROXY_LOCATIONS=US,GB   # comma-separated ISO country codes, or leave blank for any
+```
+
+`WEBSHARE_PROXY_LOCATIONS` is optional. Leave it blank to use any available
+exit node; set one or more country codes to pin to a specific region (useful
+for geo-restricted content).
+
+### How it works
+
+The backend picks up the credentials automatically at startup:
+
+- **Credentials present** → `YouTubeTranscriptApi` routes all transcript
+  requests through Webshare's residential pool with 5 automatic retries on
+  block.
+- **Credentials absent** → direct connection (works on localhost, fails on EC2).
+
+No code change or container rebuild is required — only the `.env` values need
+to be set. Restart the backend after updating `.env`:
+
+```bash
+docker compose restart backend
+```
+
+Verify the proxy is active:
+
+```bash
+docker compose exec backend env | grep WEBSHARE
+```
+
+### Troubleshooting proxy issues
+
+**`NoTranscriptFound` on EC2 despite setting credentials**
+- Confirm the variables are actually loaded: `docker compose exec backend env | grep WEBSHARE`
+- Check you copied the **Residential** credentials, not the Datacenter ones.
+- Try adding `US` to `WEBSHARE_PROXY_LOCATIONS` — some videos are only
+  accessible from US exit nodes.
+
+**`407 Proxy Authentication Required` in logs**
+- Username or password is wrong. Re-copy from the Webshare dashboard.
+
+**Proxy works but is slow**
+- Residential proxies add ~200–500 ms latency per transcript request. This is
+  normal and only affects the initial transcript fetch, not chat responses.
+
+---
+
+## 9. Managing the Stack
 
 ### Start
 
@@ -312,7 +385,7 @@ docker compose -f docker-compose.yml -f docker-compose.nginx.yml ps
 
 ---
 
-## 9. Checking Logs
+## 10. Checking Logs
 
 ```bash
 # All services, live
@@ -330,7 +403,7 @@ docker compose logs --tail=100 backend
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### Backend returns 503 "YOUTUBE_API_KEY is not configured"
 The `.env` file is missing or the key is blank. Check:

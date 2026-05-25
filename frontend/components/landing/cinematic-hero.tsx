@@ -6,12 +6,12 @@ import { BrainCircuit, Play } from "lucide-react";
 
 import { searchVideos, type VideoDurationFilter, type YouTubeVideo } from "@/lib/api";
 
+import { AboutSection } from "@/components/landing/about-section";
 import { AIWorkspace } from "@/components/landing/ai-workspace";
 import { ProcessingScreen } from "@/components/landing/processing-screen";
 import { SearchConsole } from "@/components/landing/search-console";
 import { VideoCarousel } from "@/components/landing/video-carousel";
 import { FloatingCompanion } from "@/components/floating-companion";
-import { Button } from "@/components/ui/button";
 import { pageTransition, smoothEase, staggerContainer, subtleItemReveal } from "@/lib/motion";
 
 const journeySteps = [
@@ -105,7 +105,7 @@ export function CinematicHero() {
             { label: "Home", target: "main-content" },
             { label: "Trending", target: "trending" },
             { label: "Workspace", target: "workspace" },
-            { label: "About", target: null },
+            { label: "About", target: "about" },
           ].map(({ label, target }, index) => (
             <button
               key={label}
@@ -124,9 +124,7 @@ export function CinematicHero() {
             </button>
           ))}
         </div>
-        <Button variant="ghost" className="hidden sm:inline-flex">
-          Sign in
-        </Button>
+
       </nav>
 
       <section
@@ -209,6 +207,7 @@ export function CinematicHero() {
             onComplete={() => { setIsProcessing(false); setVideoReady(true); }}
           />
           <AIWorkspace selectedVideo={selectedVideo} />
+          <AboutSection />
 
         </motion.div>
       </section>

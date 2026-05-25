@@ -26,6 +26,19 @@ class Settings(BaseSettings):
     )
     audio_cache_dir: str = Field(default="data/audio_cache", alias="AUDIO_CACHE_DIR")
     ffmpeg_location: str | None = Field(default=None, alias="FFMPEG_LOCATION")
+    webshare_proxy_username: str | None = Field(
+        default=None,
+        alias="WEBSHARE_PROXY_USERNAME",
+    )
+    webshare_proxy_password: str | None = Field(
+        default=None,
+        alias="WEBSHARE_PROXY_PASSWORD",
+    )
+    webshare_proxy_locations: list[str] = Field(
+        default=[],
+        alias="WEBSHARE_PROXY_LOCATIONS",
+        description="Optional comma-separated country codes for Webshare residential proxies.",
+    )
     langsmith_tracing: bool = Field(default=False, alias="LANGSMITH_TRACING")
     langsmith_api_key: str | None = Field(default=None, alias="LANGSMITH_API_KEY")
     langsmith_endpoint: str = Field(
@@ -80,6 +93,14 @@ class Settings(BaseSettings):
                     pass
             # Accept comma-separated: "http://...,http://..."
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+
+        return value
+
+    @field_validator("webshare_proxy_locations", mode="before")
+    @classmethod
+    def parse_webshare_proxy_locations(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [location.strip().upper() for location in value.split(",") if location.strip()]
 
         return value
 

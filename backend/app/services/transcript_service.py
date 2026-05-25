@@ -10,6 +10,7 @@ from youtube_transcript_api import (
     TranscriptsDisabled,
     YouTubeTranscriptApi,
 )
+from youtube_transcript_api.proxies import WebshareProxyConfig
 from yt_dlp import YoutubeDL
 
 from app.core.config import Settings, settings
@@ -51,7 +52,7 @@ class TranscriptService:
 
     def _fetch_youtube_transcript(self, video_id: str, language: str) -> TranscriptResponse:
         # youtube-transcript-api v1.x: instantiate the API, use .list() instead of .list_transcripts()
-        ytt = YouTubeTranscriptApi()
+        ytt = YouTubeTranscriptApi(proxy_config=self._build_youtube_proxy_config())
         transcript_list = ytt.list(video_id)
 
         try:
@@ -163,6 +164,17 @@ class TranscriptService:
             )
 
         return audio_path
+
+    def _build_youtube_proxy_config(self) -> WebshareProxyConfig | None:
+        if not self.config.webshare_proxy_username or not self.config.webshare_proxy_password:
+            return None
+
+        return WebshareProxyConfig(
+            proxy_username=self.config.webshare_proxy_username,
+            proxy_password=self.config.webshare_proxy_password,
+            filter_ip_locations=self.config.webshare_proxy_locations or None,
+            retries_when_blocked=5,
+        )
 
 
 def normalize_youtube_segments(raw_segments: list[Any]) -> list[TranscriptSegment]:
