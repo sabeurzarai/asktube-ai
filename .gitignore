@@ -7,6 +7,9 @@ frontend/node_modules/
 frontend/.next/
 out/
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Environment
 .env
 .env.*
