@@ -264,6 +264,7 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
 
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Voice refs
   const voiceRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -334,10 +335,11 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
     return () => clearTimeout(t);
   }, [journeyStep]);
 
-  // Scroll chat to bottom
+  // Scroll chat to bottom without touching the page scroll
   useEffect(() => {
     if (!history.length) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   }, [history, isSending]);
 
   // Set up Web Speech API for chat voice input
@@ -732,7 +734,7 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
               </div>
 
               {/* Messages */}
-              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+              <div ref={messagesContainerRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
                 {history.length === 0 && (
                   <div className="pt-1">
                     <p className="text-center text-xs text-slate-500">
