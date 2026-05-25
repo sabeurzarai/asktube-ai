@@ -317,10 +317,12 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
         }
       };
 
-      if (isFirstLoad && window.speechSynthesis && window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.addEventListener("voiceschanged", speak, { once: true });
-      } else {
-        speak();
+      if (!isFirstLoad) {
+        if (window.speechSynthesis && window.speechSynthesis.getVoices().length === 0) {
+          window.speechSynthesis.addEventListener("voiceschanged", speak, { once: true });
+        } else {
+          speak();
+        }
       }
 
       bubbleTimer.current = setTimeout(
@@ -335,7 +337,7 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
   // Scroll chat to bottom
   useEffect(() => {
     if (!history.length) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [history, isSending]);
 
   // Set up Web Speech API for chat voice input
