@@ -34,8 +34,8 @@ class Settings(BaseSettings):
         default=None,
         alias="WEBSHARE_PROXY_PASSWORD",
     )
-    webshare_proxy_locations: list[str] = Field(
-        default=[],
+    webshare_proxy_locations: str | None = Field(
+        default=None,
         alias="WEBSHARE_PROXY_LOCATIONS",
         description="Optional comma-separated country codes for Webshare residential proxies.",
     )
@@ -96,13 +96,16 @@ class Settings(BaseSettings):
 
         return value
 
-    @field_validator("webshare_proxy_locations", mode="before")
-    @classmethod
-    def parse_webshare_proxy_locations(cls, value: str | list[str]) -> list[str]:
-        if isinstance(value, str):
-            return [location.strip().upper() for location in value.split(",") if location.strip()]
+    @property
+    def webshare_proxy_location_list(self) -> list[str]:
+        if not self.webshare_proxy_locations:
+            return []
 
-        return value
+        return [
+            location.strip().upper()
+            for location in self.webshare_proxy_locations.split(",")
+            if location.strip()
+        ]
 
 
 @lru_cache

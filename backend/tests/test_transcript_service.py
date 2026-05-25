@@ -60,7 +60,7 @@ def test_build_youtube_proxy_config_uses_webshare_credentials() -> None:
         Settings(
             webshare_proxy_username="proxy-user",
             webshare_proxy_password="proxy-pass",
-            webshare_proxy_locations=["DE", "US"],
+            webshare_proxy_locations="DE,US",
         )
     )
 

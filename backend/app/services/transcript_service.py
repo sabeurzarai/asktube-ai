@@ -172,7 +172,7 @@ class TranscriptService:
         return WebshareProxyConfig(
             proxy_username=self.config.webshare_proxy_username,
             proxy_password=self.config.webshare_proxy_password,
-            filter_ip_locations=self.config.webshare_proxy_locations or None,
+            filter_ip_locations=self.config.webshare_proxy_location_list or None,
             retries_when_blocked=5,
         )
 
