@@ -34,6 +34,14 @@ class Settings(BaseSettings):
         default=None,
         alias="WEBSHARE_PROXY_PASSWORD",
     )
+    webshare_proxy_url: str | None = Field(
+        default=None,
+        alias="WEBSHARE_PROXY_URL",
+        description=(
+            "Optional complete Webshare proxy URL, for example the URL from the "
+            "Webshare Proxy Integration curl snippet."
+        ),
+    )
     webshare_proxy_locations: str | None = Field(
         default=None,
         alias="WEBSHARE_PROXY_LOCATIONS",

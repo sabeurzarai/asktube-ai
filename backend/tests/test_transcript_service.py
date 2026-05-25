@@ -72,6 +72,23 @@ def test_build_youtube_proxy_config_uses_webshare_credentials() -> None:
     assert proxy_url.endswith("@p.webshare.io:80/")
 
 
+def test_build_youtube_proxy_config_prefers_exact_proxy_url() -> None:
+    service = TranscriptService(
+        Settings(
+            webshare_proxy_username="proxy-user",
+            webshare_proxy_password="proxy-pass",
+            webshare_proxy_url="http://proxy-user-GB-1:proxy-pass@p.webshare.io:80/",
+        )
+    )
+
+    proxy_config = service._build_youtube_proxy_config()
+
+    assert proxy_config is not None
+    proxy_urls = proxy_config.to_requests_dict()
+    assert proxy_urls["http"] == "http://proxy-user-GB-1:proxy-pass@p.webshare.io:80/"
+    assert proxy_urls["https"] == "http://proxy-user-GB-1:proxy-pass@p.webshare.io:80/"
+
+
 def test_build_youtube_proxy_config_is_optional() -> None:
     service = TranscriptService(Settings())
 

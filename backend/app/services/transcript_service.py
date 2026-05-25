@@ -10,7 +10,7 @@ from youtube_transcript_api import (
     TranscriptsDisabled,
     YouTubeTranscriptApi,
 )
-from youtube_transcript_api.proxies import WebshareProxyConfig
+from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
 from yt_dlp import YoutubeDL
 
 from app.core.config import Settings, settings
@@ -165,7 +165,11 @@ class TranscriptService:
 
         return audio_path
 
-    def _build_youtube_proxy_config(self) -> WebshareProxyConfig | None:
+    def _build_youtube_proxy_config(self) -> GenericProxyConfig | WebshareProxyConfig | None:
+        if self.config.webshare_proxy_url:
+            proxy_url = self.config.webshare_proxy_url.strip()
+            return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+
         if not self.config.webshare_proxy_username or not self.config.webshare_proxy_password:
             return None
 
