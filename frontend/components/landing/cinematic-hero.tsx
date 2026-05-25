@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { BrainCircuit, Play } from "lucide-react";
 
-import { searchVideos, type YouTubeVideo } from "@/lib/api";
+import { searchVideos, type VideoDurationFilter, type YouTubeVideo } from "@/lib/api";
 
 import { AIWorkspace } from "@/components/landing/ai-workspace";
 import { ProcessingScreen } from "@/components/landing/processing-screen";
@@ -48,11 +48,11 @@ export function CinematicHero() {
     ? "searching"
     : "idle";
 
-  async function handleSearch(query: string) {
+  async function handleSearch(query: string, durationFilter: VideoDurationFilter) {
     setSearchStatus("loading");
     setSearchResults([]);
     try {
-      const data = await searchVideos(query);
+      const data = await searchVideos(query, 10, durationFilter);
       setSearchResults(data.videos);
       setSearchStatus(data.videos.length === 0 ? "empty" : "ready");
       if (data.videos.length > 0) {

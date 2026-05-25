@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Clock3,
   FileText,
+  Mic,
   Play,
   Send,
   Sparkles,
@@ -25,9 +26,32 @@ import {
   ShimmerBlock
 } from "@/components/ui/feedback-states";
 import { Input } from "@/components/ui/input";
-import { agentChatWithVideo, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
+import { agentChatWithVideo, transcribeSpeech, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { sectionReveal, sectionViewport, smoothEase, springMotion, staggerContainer, subtleItemReveal } from "@/lib/motion";
+
+// -- SpeechRecognition browser types -----------------------------------------
+
+type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: { length: number; [i: number]: SpeechRecognitionResultLike };
+};
+type SpeechRecognitionErrorEventLike = { error: string };
+type SpeechRecognitionLike = {
+  continuous: boolean; interimResults: boolean; lang: string;
+  onstart: (() => void) | null; onend: (() => void) | null;
+  onerror: ((e: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  start: () => void; stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+const workspaceWaveformBars = [10, 16, 8, 20, 13, 22, 9, 17, 12];
 
 const transcriptSegments = [
   {
@@ -160,6 +184,26 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<ChatEntry[]>([]);
 
+  // Voice input state
+  const [voiceIsListening, setVoiceIsListening] = useState(false);
+  const [voiceInterim, setVoiceInterim] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceIsSpeechSupported, setVoiceIsSpeechSupported] = useState(true);
+  const [voiceIsWhisperRecording, setVoiceIsWhisperRecording] = useState(false);
+  const [voiceIsWhisperProcessing, setVoiceIsWhisperProcessing] = useState(false);
+  const [voiceUseWhisperFallback, setVoiceUseWhisperFallback] = useState(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
+
+  // Voice refs
+  const voiceRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceCommittedRef = useRef("");
+  const voiceShouldRestartRef = useRef(false);
+  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceAudioChunksRef = useRef<Blob[]>([]);
+  const voiceRecordingTimerRef = useRef<number | null>(null);
+  const voiceRecordingStartRef = useRef(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
   // Reset chat when video changes
   useEffect(() => {
     setHistory([]);
@@ -168,10 +212,190 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
     setMessage("");
   }, [selectedVideo?.video_id]);
 
+  // Scroll chat to bottom when history grows
+  useEffect(() => {
+    if (!history.length) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [history, chatState]);
+
+  // Set up Web Speech API for voice input
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as SpeechWindow).SpeechRecognition ??
+      (window as SpeechWindow).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) { setVoiceIsSpeechSupported(false); return; }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || "en-US";
+
+    const startedAtRef = { current: 0 };
+
+    recognition.onstart = () => {
+      startedAtRef.current = Date.now();
+      setVoiceIsListening(true);
+      setVoiceError("");
+    };
+
+    recognition.onend = () => {
+      setVoiceInterim("");
+      const lived = Date.now() - startedAtRef.current;
+      if (voiceShouldRestartRef.current && lived > 300) {
+        window.setTimeout(() => {
+          if (voiceShouldRestartRef.current) {
+            try { recognition.start(); }
+            catch { setVoiceIsListening(false); voiceShouldRestartRef.current = false; }
+          }
+        }, 300);
+        return;
+      }
+      if (voiceShouldRestartRef.current && lived <= 300) {
+        setVoiceIsListening(false);
+        voiceShouldRestartRef.current = false;
+        setVoiceError("Could not connect to speech service. Try again.");
+        return;
+      }
+      setVoiceIsListening(false);
+    };
+
+    recognition.onerror = (event) => {
+      setVoiceIsListening(false);
+      setVoiceInterim("");
+      voiceShouldRestartRef.current = false;
+      if (event.error === "network") {
+        setVoiceUseWhisperFallback(true);
+        setVoiceError("Speech service unavailable. Tap mic to record with Whisper.");
+        return;
+      }
+      const msg: Record<string, string> = {
+        "not-allowed": "Microphone permission is blocked.",
+        "no-speech": "No speech detected. Try speaking louder.",
+        "audio-capture": "No microphone found.",
+      };
+      setVoiceError(msg[event.error] ?? "Voice input stopped. Try again.");
+    };
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      let finalText = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) finalText += result[0].transcript;
+        else interim += result[0].transcript;
+      }
+      if (finalText) {
+        voiceCommittedRef.current = `${voiceCommittedRef.current} ${finalText}`.replace(/\s+/g, " ").trim();
+        setMessage(voiceCommittedRef.current);
+      }
+      setVoiceInterim(interim.trim());
+    };
+
+    voiceRecognitionRef.current = recognition;
+    return () => {
+      voiceShouldRestartRef.current = false;
+      recognition.onstart = null; recognition.onend = null;
+      recognition.onerror = null; recognition.onresult = null;
+      recognition.stop();
+    };
+  }, []);
+
+  function getBestMimeType(): string {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
+    return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  }
+
+  async function startWhisperRecording() {
+    setVoiceError("");
+    setVoiceRecordingSeconds(0);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getBestMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      voiceAudioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) voiceAudioChunksRef.current.push(e.data); };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (voiceRecordingTimerRef.current !== null) {
+          window.clearInterval(voiceRecordingTimerRef.current);
+          voiceRecordingTimerRef.current = null;
+        }
+        setVoiceIsWhisperRecording(false);
+        setVoiceIsWhisperProcessing(true);
+        try {
+          const blob = new Blob(voiceAudioChunksRef.current, { type: mimeType || "audio/webm" });
+          const transcript = await transcribeSpeech(blob);
+          if (transcript) {
+            voiceCommittedRef.current = `${voiceCommittedRef.current} ${transcript}`.replace(/\s+/g, " ").trim();
+            setMessage(voiceCommittedRef.current);
+          } else {
+            setVoiceError("Nothing detected. Speak clearly and try again.");
+          }
+        } catch {
+          setVoiceError("Transcription failed. Try again.");
+        } finally {
+          setVoiceIsWhisperProcessing(false);
+          setVoiceRecordingSeconds(0);
+        }
+      };
+
+      recorder.start(250);
+      voiceRecordingStartRef.current = Date.now();
+      voiceMediaRecorderRef.current = recorder;
+      setVoiceIsWhisperRecording(true);
+      voiceRecordingTimerRef.current = window.setInterval(() => {
+        setVoiceRecordingSeconds(Math.floor((Date.now() - voiceRecordingStartRef.current) / 1000));
+      }, 500);
+    } catch {
+      setVoiceError("Microphone access denied.");
+    }
+  }
+
+  function stopWhisperRecording() {
+    const elapsed = Date.now() - voiceRecordingStartRef.current;
+    if (elapsed < 1500) window.setTimeout(() => voiceMediaRecorderRef.current?.stop(), 1500 - elapsed);
+    else voiceMediaRecorderRef.current?.stop();
+  }
+
+  function toggleVoiceInput() {
+    setVoiceError("");
+    if (voiceIsWhisperRecording) { stopWhisperRecording(); return; }
+    if (voiceUseWhisperFallback || !voiceIsSpeechSupported || !voiceRecognitionRef.current) {
+      setVoiceUseWhisperFallback(false);
+      startWhisperRecording();
+      return;
+    }
+    if (voiceIsListening) {
+      voiceShouldRestartRef.current = false;
+      voiceRecognitionRef.current.stop();
+      return;
+    }
+    voiceCommittedRef.current = message;
+    setVoiceInterim("");
+    voiceShouldRestartRef.current = true;
+    try { voiceRecognitionRef.current.start(); }
+    catch {
+      voiceShouldRestartRef.current = false;
+      setVoiceUseWhisperFallback(true);
+      setVoiceError("Voice unavailable. Tap mic to record with Whisper.");
+    }
+  }
+
   async function submitQuestion(question: string) {
     const trimmed = question.trim();
     if (!trimmed) { setChatState("empty"); return; }
     if (!selectedVideo) { setChatState("error"); return; }
+
+    // Stop any active voice input before submitting
+    if (voiceIsListening) {
+      voiceShouldRestartRef.current = false;
+      voiceRecognitionRef.current?.stop();
+    }
+    voiceCommittedRef.current = "";
+    setVoiceInterim("");
 
     setHistory((prev) => [...prev, { role: "user", content: trimmed }]);
     setMessage("");
@@ -490,28 +714,105 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
                 </button>
               ))}
             </div>
+
+            {/* Voice feedback strip */}
+            <AnimatePresence>
+              {(voiceIsListening || voiceIsWhisperRecording || voiceIsWhisperProcessing || voiceError) && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.22 }}
+                  className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 px-4 py-2.5"
+                >
+                  {voiceError ? (
+                    <p className="text-xs text-red-300">{voiceError}</p>
+                  ) : voiceIsWhisperProcessing ? (
+                    <div className="flex items-center gap-2">
+                      <span className="size-3 shrink-0 rounded-full border-2 border-cyan-300 border-t-transparent motion-safe:animate-spin" />
+                      <p className="text-xs text-cyan-200">Transcribing with Whisper...</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-cyan-200">
+                        {voiceIsWhisperRecording
+                          ? `Recording ${voiceRecordingSeconds}s — tap mic to stop`
+                          : "Listening..."}
+                      </span>
+                      <div aria-hidden="true" className="ml-auto flex h-5 items-end gap-0.5">
+                        {workspaceWaveformBars.map((h, i) => (
+                          <motion.span
+                            key={i}
+                            animate={prefersReducedMotion ? { height: 3 } : {
+                              height: [3, h, 4],
+                              opacity: [0.4, 1, 0.5],
+                            }}
+                            transition={{ duration: 0.75, repeat: Infinity, ease: "easeInOut", delay: i * 0.07 }}
+                            className="w-1 rounded-full bg-gradient-to-t from-pink-400 to-cyan-300"
+                            style={{ height: 3 }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
               <label className="sr-only" htmlFor="workspace-message">
                 Ask a question about the video
               </label>
               <Input
                 id="workspace-message"
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
+                value={[message, voiceInterim].filter(Boolean).join(" ")}
+                onChange={(event) => {
+                  setMessage(event.target.value);
+                  voiceCommittedRef.current = event.target.value;
+                  setVoiceInterim("");
+                }}
                 placeholder="Ask for a summary, timestamp, or follow-up..."
                 className="h-12 rounded-2xl bg-black/30"
               />
-              <Button
-                type="submit"
-                size="icon"
-                aria-label="Send message"
-                className="min-h-12 w-full shrink-0 sm:w-12"
-              >
-                <Send aria-hidden="true" className="size-4" />
-                <span className="sm:sr-only">Ask</span>
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={voiceIsListening || voiceIsWhisperRecording ? "red" : "ghost"}
+                  size="icon"
+                  aria-label={
+                    voiceIsWhisperRecording ? "Stop recording"
+                    : voiceIsListening ? "Stop voice input"
+                    : voiceIsWhisperProcessing ? "Transcribing..."
+                    : "Voice input"
+                  }
+                  onClick={toggleVoiceInput}
+                  disabled={voiceIsWhisperProcessing}
+                  className="relative min-h-12 w-full shrink-0 overflow-visible sm:w-12"
+                >
+                  {voiceIsWhisperProcessing ? (
+                    <span className="size-4 rounded-full border-2 border-cyan-300 border-t-transparent motion-safe:animate-spin" />
+                  ) : voiceIsListening || voiceIsWhisperRecording ? (
+                    <Volume2 aria-hidden="true" className="size-4" />
+                  ) : (
+                    <Mic aria-hidden="true" className="size-4" />
+                  )}
+                  {(voiceIsListening || voiceIsWhisperRecording) && (
+                    <span className="absolute inset-0 -z-10 rounded-full bg-red-500/30 motion-safe:animate-ping" />
+                  )}
+                </Button>
+                <Button
+                  type="submit"
+                  size="icon"
+                  aria-label="Send message"
+                  className="min-h-12 w-full shrink-0 sm:w-12"
+                >
+                  <Send aria-hidden="true" className="size-4" />
+                  <span className="sm:sr-only">Ask</span>
+                </Button>
+              </div>
             </form>
           </div>
+          <div ref={messagesEndRef} />
         </motion.section>
 
         <motion.aside

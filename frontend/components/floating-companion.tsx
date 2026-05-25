@@ -3,15 +3,40 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Environment, PerspectiveCamera } from "@react-three/drei";
-import { AnimatePresence, motion, useReducedMotion, useSpring, useTransform } from "framer-motion";
-import { Bot, Clock3, Send, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Bot, Clock3, Mic, Send, Volume2, X } from "lucide-react";
 import * as THREE from "three";
 
-import { chatWithVideo, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
+import { chatWithVideo, transcribeSpeech, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
 import type { JourneyStep } from "@/components/landing/cinematic-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+// -- SpeechRecognition browser types ------------------------------------------
+
+type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: { length: number; [index: number]: SpeechRecognitionResultLike };
+};
+type SpeechRecognitionErrorEventLike = { error: string };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 // -- Step messages -------------------------------------------------------------
 
@@ -23,41 +48,40 @@ const STEP_CONFIG: Record<JourneyStep, {
   position: { left: string; top: string };
   dotColor: string;
 }> = {
-  // All positions hug the edges - never over page text
   idle: {
     bubble: "Hi! I'm your AI tutor. Search for a YouTube topic above to get started!",
     spoken: "Hi! Search for a topic to find YouTube videos.",
-    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "80px" },  // top-right edge
+    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "80px" },
     dotColor: "bg-slate-400",
   },
   searching: {
     bubble: "Searching YouTube for you...",
     spoken: "Searching YouTube.",
-    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "160px" }, // right edge, slightly lower
+    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "160px" },
     dotColor: "bg-cyan-400",
   },
   videos_ready: {
     bubble: "Found some videos! Scroll down, pick one and click Prepare.",
     spoken: "I found videos. Pick one and click Prepare.",
-    position: { left: "12px", top: "40%" },                                 // left edge, mid
+    position: { left: "12px", top: "40%" },
     dotColor: "bg-cyan-400",
   },
   video_selected: {
     bubble: "Great choice! Preparing the transcript now...",
     spoken: "Preparing the video transcript.",
-    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "38%" },   // right edge, mid
+    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: "38%" },
     dotColor: "bg-purple-400",
   },
   processing: {
     bubble: "Hold on... reading the transcript and building knowledge. Almost there!",
     spoken: "Processing the transcript. Almost ready.",
-    position: { left: "12px", top: "58%" },                                 // left edge, lower
+    position: { left: "12px", top: "58%" },
     dotColor: "bg-purple-400",
   },
   ready: {
     bubble: "Your video is ready! Click me and ask anything - I answer with timestamps.",
     spoken: "Your video is ready. Ask me anything.",
-    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: `calc(100% - ${ROBOT_SIZE + 24}px)` }, // bottom-right
+    position: { left: `calc(100% - ${ROBOT_SIZE + 16}px)`, top: `calc(100% - ${ROBOT_SIZE + 24}px)` },
     dotColor: "bg-emerald-400",
   },
 };
@@ -68,7 +92,19 @@ const WHITE = "#f0f4f8";
 const BLACK_JOINT = "#111827";
 const BLUE_GLOW = "#22d3ee";
 
-function MiniRobot({ isReady, isMoving, paused }: { isReady: boolean; isMoving: boolean; paused: boolean }) {
+const chatWaveformBars = [10, 16, 8, 20, 13, 22, 9, 17, 12];
+
+function MiniRobot({
+  isReady,
+  isMoving,
+  paused,
+  isVoiceActive,
+}: {
+  isReady: boolean;
+  isMoving: boolean;
+  paused: boolean;
+  isVoiceActive: boolean;
+}) {
   const groupRef    = useRef<THREE.Group>(null);
   const leftEyeRef  = useRef<THREE.Mesh>(null);
   const rightEyeRef = useRef<THREE.Mesh>(null);
@@ -96,10 +132,16 @@ function MiniRobot({ isReady, isMoving, paused }: { isReady: boolean; isMoving: 
     if (rightEyeRef.current) rightEyeRef.current.scale.y = b;
 
     if (antennaRef.current)
-      (antennaRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.8 + Math.sin(t * 2.4) * 0.55;
+      (antennaRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = isVoiceActive
+        ? 1.6 + Math.sin(t * 9) * 0.8
+        : 0.8 + Math.sin(t * 2.4) * 0.55;
 
     if (waveArmRef.current)
-      waveArmRef.current.rotation.z = isReady ? 0.35 + Math.sin(t * 4.2) * 0.6 : 0.3 + Math.sin(t * 1.2) * 0.08;
+      waveArmRef.current.rotation.z = isReady
+        ? isVoiceActive
+          ? 0.5 + Math.sin(t * 9) * 0.9
+          : 0.35 + Math.sin(t * 4.2) * 0.6
+        : 0.3 + Math.sin(t * 1.2) * 0.08;
   });
 
   return (
@@ -209,8 +251,28 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
   const [chatError, setChatError] = useState<string | null>(null);
   const [spokenStep, setSpokenStep] = useState<JourneyStep | null>(null);
   const [isMoving, setIsMoving] = useState(false);
+
+  // Voice input state
+  const [voiceIsListening, setVoiceIsListening] = useState(false);
+  const [voiceInterim, setVoiceInterim] = useState("");
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceIsSpeechSupported, setVoiceIsSpeechSupported] = useState(true);
+  const [voiceIsWhisperRecording, setVoiceIsWhisperRecording] = useState(false);
+  const [voiceIsWhisperProcessing, setVoiceIsWhisperProcessing] = useState(false);
+  const [voiceUseWhisperFallback, setVoiceUseWhisperFallback] = useState(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
+
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Voice refs
+  const voiceRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceCommittedRef = useRef("");
+  const voiceShouldRestartRef = useRef(false);
+  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceAudioChunksRef = useRef<Blob[]>([]);
+  const voiceRecordingTimerRef = useRef<number | null>(null);
+  const voiceRecordingStartRef = useRef(0);
 
   const cfg = STEP_CONFIG[journeyStep];
 
@@ -228,7 +290,6 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
     if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
     setShowBubble(false);
 
-    // No walking animation on first load (idle); walk for all subsequent steps
     const isFirstLoad = journeyStep === "idle";
     if (!isFirstLoad) setIsMoving(true);
 
@@ -256,7 +317,6 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
         }
       };
 
-      // Voices may not be loaded yet on first render - wait for them
       if (isFirstLoad && window.speechSynthesis && window.speechSynthesis.getVoices().length === 0) {
         window.speechSynthesis.addEventListener("voiceschanged", speak, { once: true });
       } else {
@@ -274,12 +334,226 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
 
   // Scroll chat to bottom
   useEffect(() => {
+    if (!history.length) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, isSending]);
+
+  // Set up Web Speech API for chat voice input
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as SpeechWindow).SpeechRecognition ??
+      (window as SpeechWindow).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceIsSpeechSupported(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || "en-US";
+
+    const startedAtRef = { current: 0 };
+
+    recognition.onstart = () => {
+      startedAtRef.current = Date.now();
+      setVoiceIsListening(true);
+      setVoiceError("");
+    };
+
+    recognition.onend = () => {
+      setVoiceInterim("");
+      const lived = Date.now() - startedAtRef.current;
+      if (voiceShouldRestartRef.current && lived > 300) {
+        window.setTimeout(() => {
+          if (voiceShouldRestartRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              setVoiceIsListening(false);
+              voiceShouldRestartRef.current = false;
+              setVoiceError("Voice input stopped. Click the mic to try again.");
+            }
+          }
+        }, 300);
+        return;
+      }
+      if (voiceShouldRestartRef.current && lived <= 300) {
+        setVoiceIsListening(false);
+        voiceShouldRestartRef.current = false;
+        setVoiceError("Could not connect to speech service. Try again.");
+        return;
+      }
+      setVoiceIsListening(false);
+    };
+
+    recognition.onerror = (event) => {
+      setVoiceIsListening(false);
+      setVoiceInterim("");
+      voiceShouldRestartRef.current = false;
+      if (event.error === "network") {
+        setVoiceUseWhisperFallback(true);
+        setVoiceError("Speech service unavailable. Tap mic to record with Whisper.");
+        return;
+      }
+      const msg: Record<string, string> = {
+        "not-allowed": "Microphone permission is blocked.",
+        "no-speech": "No speech detected. Try speaking louder.",
+        "audio-capture": "No microphone found.",
+        "service-not-allowed": "Speech service not allowed on this page.",
+      };
+      setVoiceError(msg[event.error] ?? "Voice input stopped. Try again.");
+    };
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      let finalText = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalText += result[0].transcript;
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      if (finalText) {
+        voiceCommittedRef.current = `${voiceCommittedRef.current} ${finalText}`
+          .replace(/\s+/g, " ")
+          .trim();
+        setMessage(voiceCommittedRef.current);
+      }
+      setVoiceInterim(interim.trim());
+    };
+
+    voiceRecognitionRef.current = recognition;
+
+    return () => {
+      voiceShouldRestartRef.current = false;
+      recognition.onstart = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.onresult = null;
+      recognition.stop();
+    };
+  }, []);
+
+  function getBestMimeType(): string {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+      "audio/mp4",
+    ];
+    return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  }
+
+  async function startWhisperRecording() {
+    setVoiceError("");
+    setVoiceRecordingSeconds(0);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getBestMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      voiceAudioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) voiceAudioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (voiceRecordingTimerRef.current !== null) {
+          window.clearInterval(voiceRecordingTimerRef.current);
+          voiceRecordingTimerRef.current = null;
+        }
+        setVoiceIsWhisperRecording(false);
+        setVoiceIsWhisperProcessing(true);
+        try {
+          const blob = new Blob(voiceAudioChunksRef.current, { type: mimeType || "audio/webm" });
+          const transcript = await transcribeSpeech(blob);
+          if (transcript) {
+            voiceCommittedRef.current = `${voiceCommittedRef.current} ${transcript}`
+              .replace(/\s+/g, " ")
+              .trim();
+            setMessage(voiceCommittedRef.current);
+          } else {
+            setVoiceError("Nothing detected. Speak clearly and try again.");
+          }
+        } catch {
+          setVoiceError("Transcription failed. Try again.");
+        } finally {
+          setVoiceIsWhisperProcessing(false);
+          setVoiceRecordingSeconds(0);
+        }
+      };
+
+      recorder.start(250);
+      voiceRecordingStartRef.current = Date.now();
+      voiceMediaRecorderRef.current = recorder;
+      setVoiceIsWhisperRecording(true);
+
+      voiceRecordingTimerRef.current = window.setInterval(() => {
+        setVoiceRecordingSeconds(Math.floor((Date.now() - voiceRecordingStartRef.current) / 1000));
+      }, 500);
+    } catch {
+      setVoiceError("Microphone access denied.");
+    }
+  }
+
+  function stopWhisperRecording() {
+    const elapsed = Date.now() - voiceRecordingStartRef.current;
+    if (elapsed < 1500) {
+      window.setTimeout(() => voiceMediaRecorderRef.current?.stop(), 1500 - elapsed);
+    } else {
+      voiceMediaRecorderRef.current?.stop();
+    }
+  }
+
+  function toggleVoiceInput() {
+    setVoiceError("");
+
+    if (voiceIsWhisperRecording) {
+      stopWhisperRecording();
+      return;
+    }
+
+    if (voiceUseWhisperFallback || !voiceIsSpeechSupported || !voiceRecognitionRef.current) {
+      setVoiceUseWhisperFallback(false);
+      startWhisperRecording();
+      return;
+    }
+
+    if (voiceIsListening) {
+      voiceShouldRestartRef.current = false;
+      voiceRecognitionRef.current.stop();
+      return;
+    }
+
+    voiceCommittedRef.current = message;
+    setVoiceInterim("");
+    voiceShouldRestartRef.current = true;
+
+    try {
+      voiceRecognitionRef.current.start();
+    } catch {
+      voiceShouldRestartRef.current = false;
+      setVoiceUseWhisperFallback(true);
+      setVoiceError("Voice input unavailable. Tap mic to record with Whisper.");
+    }
+  }
 
   async function sendMessage(q: string) {
     const trimmed = q.trim();
     if (!trimmed || !selectedVideo || isSending) return;
+    // Stop any active voice input before sending
+    if (voiceIsListening) {
+      voiceShouldRestartRef.current = false;
+      voiceRecognitionRef.current?.stop();
+    }
+    voiceCommittedRef.current = "";
+    setVoiceInterim("");
     setHistory((prev) => [...prev, { role: "user", content: trimmed }]);
     setMessage("");
     setIsSending(true);
@@ -302,9 +576,11 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
 
   const suggestedPrompts = ["Summarize this video", "Show key timestamps", "Give me study notes"];
 
-  // Determine chat panel position (open left if robot is on the right)
   const robotOnRight = cfg.position.left.includes("100%") || cfg.position.left.includes("calc(100%");
   const robotOnBottom = cfg.position.top.includes("100%") || cfg.position.top.includes("calc(100%");
+
+  const isVoiceActive = voiceIsListening || voiceIsWhisperRecording;
+  const liveMessage = [message, voiceInterim].filter(Boolean).join(" ");
 
   return (
     <>
@@ -328,7 +604,6 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               className={cn(
                 "absolute w-64 rounded-2xl border px-4 py-3 text-sm text-white shadow-[0_8px_32px_rgba(0,0,0,.45)] backdrop-blur-xl",
-                // Position bubble above robot, or to the side
                 robotOnBottom ? "bottom-full mb-3" : "top-full mt-3",
                 robotOnRight ? "right-0" : "left-0",
                 journeyStep === "ready"
@@ -343,7 +618,6 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
                 <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-300">AskTube AI</span>
               </div>
               <p className="leading-5">{cfg.bubble}</p>
-              {/* Tail */}
               <div className={cn(
                 "absolute h-2.5 w-2.5 rotate-45 border",
                 robotOnBottom
@@ -362,7 +636,6 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
 
         {/* Robot canvas button */}
         <div className="relative">
-
           <motion.button
             type="button"
             onClick={() => { setIsOpen((v) => !v); setShowBubble(false); }}
@@ -384,7 +657,12 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
               <pointLight position={[2, 3, 2]} intensity={32} color="#67e8f9" />
               <pointLight position={[-2, 1, 2]} intensity={20} color="#818cf8" />
               <pointLight position={[0, -1, 3]} intensity={14} color="#ffffff" />
-              <MiniRobot isReady={isReady} isMoving={isMoving} paused={!!prefersReducedMotion} />
+              <MiniRobot
+                isReady={isReady}
+                isMoving={isMoving}
+                paused={!!prefersReducedMotion}
+                isVoiceActive={isVoiceActive}
+              />
               <Environment preset="night" />
             </Canvas>
 
@@ -394,10 +672,19 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
               cfg.dotColor,
               (journeyStep === "processing" || journeyStep === "video_selected") && "animate-pulse"
             )} />
+
+            {/* Voice active ring around robot */}
+            {isVoiceActive && isOpen && (
+              <motion.span
+                animate={{ scale: [1, 1.18, 1], opacity: [0.7, 0.2, 0.7] }}
+                transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                className="pointer-events-none absolute inset-0 rounded-full border-2 border-red-400/70"
+              />
+            )}
           </motion.button>
         </div>
 
-        {/* Chat panel - opens relative to robot position */}
+        {/* Chat panel */}
         <AnimatePresence>
           {isOpen && (
             <motion.div
@@ -512,19 +799,94 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Voice feedback strip */}
+              <AnimatePresence>
+                {(isVoiceActive || voiceIsWhisperProcessing || voiceError) && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.22 }}
+                    className="overflow-hidden border-t border-white/10"
+                  >
+                    <div className="flex items-center gap-2 px-4 py-2">
+                      {voiceError ? (
+                        <p className="flex-1 text-xs text-red-300">{voiceError}</p>
+                      ) : voiceIsWhisperProcessing ? (
+                        <>
+                          <span className="size-3 shrink-0 rounded-full border-2 border-cyan-300 border-t-transparent motion-safe:animate-spin" />
+                          <p className="text-xs text-cyan-200">Transcribing with Whisper...</p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs text-cyan-200">
+                            {voiceIsWhisperRecording
+                              ? `Recording ${voiceRecordingSeconds}s — tap mic to stop`
+                              : "Listening..."}
+                          </span>
+                          <div aria-hidden="true" className="ml-auto flex h-5 items-end gap-0.5">
+                            {chatWaveformBars.map((h, i) => (
+                              <motion.span
+                                key={i}
+                                animate={prefersReducedMotion ? { height: 3 } : {
+                                  height: [3, h, 4],
+                                  opacity: [0.4, 1, 0.5],
+                                }}
+                                transition={{ duration: 0.75, repeat: Infinity, ease: "easeInOut", delay: i * 0.07 }}
+                                className="w-1 rounded-full bg-gradient-to-t from-pink-400 to-cyan-300"
+                                style={{ height: 3 }}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Input */}
               <form onSubmit={handleSubmit} className="flex gap-2 border-t border-white/10 p-3">
                 <label className="sr-only" htmlFor="companion-input">Ask a question</label>
                 <Input
                   id="companion-input"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  value={liveMessage}
+                  onChange={(e) => {
+                    setMessage(e.target.value);
+                    voiceCommittedRef.current = e.target.value;
+                    setVoiceInterim("");
+                  }}
                   placeholder={isReady ? "Ask anything..." : "Prepare a video first"}
                   disabled={!isReady || isSending}
                   autoComplete="off"
                   className="h-9 flex-1 rounded-xl bg-black/30 text-sm"
                 />
-                <Button type="submit" size="icon" disabled={!isReady || isSending || !message.trim()} aria-label="Send" className="size-9 shrink-0 rounded-xl">
+                <Button
+                  type="button"
+                  variant={isVoiceActive ? "red" : "ghost"}
+                  size="icon"
+                  aria-label={
+                    voiceIsWhisperRecording ? "Stop recording"
+                    : voiceIsListening ? "Stop voice input"
+                    : voiceIsWhisperProcessing ? "Transcribing..."
+                    : "Voice input"
+                  }
+                  onClick={toggleVoiceInput}
+                  disabled={!isReady || voiceIsWhisperProcessing}
+                  className="relative size-9 shrink-0 overflow-visible rounded-xl"
+                >
+                  {voiceIsWhisperProcessing ? (
+                    <span className="size-3.5 rounded-full border-2 border-cyan-300 border-t-transparent motion-safe:animate-spin" />
+                  ) : isVoiceActive ? (
+                    <Volume2 className="size-4" />
+                  ) : (
+                    <Mic className="size-4" />
+                  )}
+                  {isVoiceActive && (
+                    <span className="absolute inset-0 -z-10 rounded-xl bg-red-500/30 motion-safe:animate-ping" />
+                  )}
+                </Button>
+                <Button type="submit" size="icon" disabled={!isReady || isSending || !liveMessage.trim()} aria-label="Send" className="size-9 shrink-0 rounded-xl">
                   <Send className="size-4" />
                 </Button>
               </form>

@@ -19,13 +19,17 @@ export interface YouTubeSearchResponse {
   videos: YouTubeVideo[];
 }
 
+export type VideoDurationFilter = "any" | "under_10" | "under_30" | "under_60" | "over_60";
+
 export async function searchVideos(
   query: string,
-  maxResults = 10
+  maxResults = 10,
+  durationFilter: VideoDurationFilter = "any"
 ): Promise<YouTubeSearchResponse> {
   const url = new URL(`${API_BASE}/api/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("max_results", String(maxResults));
+  url.searchParams.set("duration_filter", durationFilter);
 
   const res = await fetch(url.toString());
 

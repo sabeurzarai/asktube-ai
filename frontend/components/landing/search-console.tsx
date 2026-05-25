@@ -11,7 +11,7 @@ import {
   ErrorState
 } from "@/components/ui/feedback-states";
 import { Input } from "@/components/ui/input";
-import { transcribeSpeech } from "@/lib/api";
+import { transcribeSpeech, type VideoDurationFilter } from "@/lib/api";
 import { smoothEase, staggerContainer, subtleItemReveal } from "@/lib/motion";
 
 type SpeechRecognitionResultLike = {
@@ -53,9 +53,16 @@ type SpeechWindow = Window & {
 };
 
 const waveformBars = [18, 28, 14, 34, 22, 38, 16, 30, 20];
+const durationOptions: Array<{ label: string; value: VideoDurationFilter }> = [
+  { label: "Any length", value: "any" },
+  { label: "< 10 min", value: "under_10" },
+  { label: "< 30 min", value: "under_30" },
+  { label: "< 1 hour", value: "under_60" },
+  { label: "1h+", value: "over_60" },
+];
 
 interface SearchConsoleProps {
-  onSearch: (query: string) => Promise<void>;
+  onSearch: (query: string, durationFilter: VideoDurationFilter) => Promise<void>;
   externalSearchState?: "idle" | "loading" | "ready" | "error" | "empty";
 }
 
@@ -66,6 +73,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
   const [interimTranscript, setInterimTranscript] = useState("");
   const [voiceError, setVoiceError] = useState("");
   const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+  const [durationFilter, setDurationFilter] = useState<VideoDurationFilter>("any");
   const [searchState, setSearchState] = useState<"idle" | "loading" | "empty" | "error" | "ready">(
     "idle"
   );
@@ -301,7 +309,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
     const t2 = window.setTimeout(() => setSearchProgress(76), 900);
 
     try {
-      await onSearch(normalizedQuery);
+      await onSearch(normalizedQuery, durationFilter);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       setSearchProgress(100);
@@ -442,6 +450,31 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
             </Button>
           </div>
         </div>
+
+        <fieldset className="relative mt-3 border-0 p-0">
+          <legend className="sr-only">Filter videos by length</legend>
+          <div className="flex flex-wrap gap-2">
+            {durationOptions.map((option) => {
+              const active = option.value === durationFilter;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setDurationFilter(option.value)}
+                  className={[
+                    "rounded-full border px-3.5 py-2 text-xs font-bold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300",
+                    active
+                      ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-50 shadow-[0_0_24px_rgba(34,211,238,.16)]"
+                      : "border-white/10 bg-black/25 text-slate-300 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                  ].join(" ")}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
 
         <AnimatePresence>
           {(isListening || isWhisperRecording || isWhisperProcessing || interimTranscript || voiceError) && (

@@ -9,6 +9,8 @@ from app.schemas.search import YouTubeSearchResponse, YouTubeThumbnail, YouTubeV
 
 
 YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v={video_id}"
+DurationFilter = str
+VALID_DURATION_FILTERS = {"any", "under_10", "under_30", "under_60", "over_60"}
 ISO_8601_DURATION_PATTERN = re.compile(
     r"^P(?:(?P<days>\d+)D)?"
     r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
@@ -19,14 +21,25 @@ class YouTubeService:
     def __init__(self, config: Settings) -> None:
         self.config = config
 
-    async def search_videos(self, query: str, max_results: int = 10) -> YouTubeSearchResponse:
+    async def search_videos(
+        self,
+        query: str,
+        max_results: int = 10,
+        duration_filter: DurationFilter = "any",
+    ) -> YouTubeSearchResponse:
         if not self.config.youtube_api_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="YOUTUBE_API_KEY is not configured.",
             )
+        if duration_filter not in VALID_DURATION_FILTERS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid duration filter.",
+            )
 
-        search_items = await self._request_search(query=query, max_results=max_results)
+        search_limit = 25 if duration_filter != "any" else max_results
+        search_items = await self._request_search(query=query, max_results=search_limit)
         video_ids = [item["id"]["videoId"] for item in search_items if item.get("id", {}).get("videoId")]
         metadata_by_id = await self._request_video_metadata(video_ids)
 
@@ -35,6 +48,11 @@ class YouTubeService:
             for item in search_items
             if item.get("id", {}).get("videoId")
         ]
+        videos = [
+            video
+            for video in videos
+            if duration_matches_filter(video.duration_seconds, duration_filter)
+        ][:max_results]
 
         return YouTubeSearchResponse(query=query, count=len(videos), videos=videos)
 
@@ -154,6 +172,22 @@ def parse_iso_8601_duration(duration: str) -> int | None:
         + parts["minutes"] * 60
         + parts["seconds"]
     )
+
+
+def duration_matches_filter(duration_seconds: int | None, duration_filter: DurationFilter) -> bool:
+    if duration_filter == "any":
+        return True
+    if duration_seconds is None:
+        return False
+    if duration_filter == "under_10":
+        return duration_seconds < 10 * 60
+    if duration_filter == "under_30":
+        return duration_seconds < 30 * 60
+    if duration_filter == "under_60":
+        return duration_seconds < 60 * 60
+    if duration_filter == "over_60":
+        return duration_seconds >= 60 * 60
+    return False
 
 
 def get_youtube_service() -> YouTubeService:
