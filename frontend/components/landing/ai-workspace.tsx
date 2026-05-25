@@ -546,7 +546,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.25 }}
           transition={{ duration: 0.45, delay: 0.08, ease: smoothEase }}
-          className="premium-panel-soft order-first flex min-h-[32rem] min-w-0 flex-col p-4 sm:min-h-[34rem] sm:p-5 lg:order-none lg:col-span-2 xl:col-span-1"
+          className="premium-panel-soft order-first flex h-[34rem] min-h-0 min-w-0 flex-col overflow-hidden p-4 sm:h-[36rem] sm:p-5 lg:order-none lg:col-span-2 lg:h-[40rem] xl:col-span-1"
         >
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div className="flex items-center gap-3">
@@ -564,7 +564,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
             </div>
           </div>
 
-          <div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto py-5">
+          <div ref={chatScrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain py-5">
             {history.length === 0 && chatState === "idle" && (
               <p className="text-center text-sm text-slate-500">
                 {selectedVideo
