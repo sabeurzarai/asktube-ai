@@ -202,6 +202,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
   const voiceAudioChunksRef = useRef<Blob[]>([]);
   const voiceRecordingTimerRef = useRef<number | null>(null);
   const voiceRecordingStartRef = useRef(0);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reset chat when video changes
@@ -215,8 +216,14 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
   // Scroll chat to bottom when history grows
   useEffect(() => {
     if (!history.length) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [history, chatState]);
+    const chatScroll = chatScrollRef.current;
+    if (!chatScroll) return;
+
+    chatScroll.scrollTo({
+      top: chatScroll.scrollHeight,
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
+  }, [history, chatState, prefersReducedMotion]);
 
   // Set up Web Speech API for voice input
   useEffect(() => {
@@ -557,7 +564,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
             </div>
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto py-5">
+          <div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto py-5">
             {history.length === 0 && chatState === "idle" && (
               <p className="text-center text-sm text-slate-500">
                 {selectedVideo
