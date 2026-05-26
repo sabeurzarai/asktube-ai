@@ -41,6 +41,10 @@ def rgb(hex_color: str) -> RGBColor:
     return RGBColor(int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
 
 
+def add_notes(slide, text: str) -> None:
+    slide.notes_slide.notes_text_frame.text = text
+
+
 def add_bg(slide, title: str | None = None) -> None:
     slide.background.fill.solid()
     slide.background.fill.fore_color.rgb = BG
@@ -192,6 +196,7 @@ def slide_cover(prs):
     add_text(slide, "CITATIONS", 8.35, 3.72, 3.7, 0.35, size=16, color=GREEN, bold=True, caps=True, spacing=2.5)
     add_line(slide, 8.35, 4.45, 11.8, 4.45, PINK, 2)
     add_text(slide, "Netflix-inspired UI + FastAPI + LangChain + ChromaDB + EC2", 8.35, 4.72, 3.55, 0.5, size=13, color=MUTED)
+    add_notes(slide, "~20 seconds\n\nHi, I'm Sabeur. AskTube AI is an AI platform that lets you chat with any YouTube video using its transcript. It is not a generic chatbot — every answer is grounded in the video, with timestamp citations so you can verify exactly where the information comes from.")
 
 
 def slide_problem_solution(prs):
@@ -202,6 +207,7 @@ def slide_problem_solution(prs):
     add_card(slide, "User flow", "Search a topic, choose a video, let the app process the transcript, then ask questions with source timestamps.", 0.72, 3.0, 3.55, 1.9, CYAN)
     add_card(slide, "Trust rule", "The assistant answers from transcript evidence only. If the transcript cannot answer, it refuses instead of inventing.", 4.55, 3.0, 3.55, 1.9, GREEN)
     add_card(slide, "Why it matters", "Learners can skip guessing where information lives and jump straight to the exact moment in the video.", 8.38, 3.0, 3.55, 1.9, PINK)
+    add_notes(slide, "~40 seconds\n\nYouTube has over 800 million videos. Learning from long videos is frustrating — you scrub back and forth looking for one specific answer.\n\nAskTube solves this by turning any video into a conversational knowledge base. You ask a question and the AI answers using the transcript, with the exact timestamp. The key rule: if the transcript doesn't contain the answer, the system refuses — no hallucinations, no invented content.")
 
 
 def slide_journey(prs):
@@ -219,6 +225,7 @@ def slide_journey(prs):
     for x in [2.98, 5.53, 8.08]:
         add_line(slide, x, 2.82, x + 0.22, 2.82, CYAN, 2)
     add_text(slide, "The UI is intentionally cinematic: dark mode, glass surfaces, duration filters, smooth transitions, a 3D assistant, and graceful loading/error states.", 0.8, 5.25, 11.4, 0.55, size=17, color=MUTED)
+    add_notes(slide, "~35 seconds\n\nThe flow is four steps. Search for a topic by text or voice. Pick a video from a carousel. The app processes the transcript in real time — you see each step happening. Then you chat with the video content and get answers with clickable timestamp citations.\n\nThe whole journey is guided by a 3D robot companion that moves around the screen and speaks at each stage.")
 
 
 def slide_architecture(prs):
@@ -231,6 +238,7 @@ def slide_architecture(prs):
     add_line(slide, 4.2, 3.15, 4.9, 3.15, CYAN, 2)
     add_line(slide, 8.4, 3.15, 9.1, 3.15, PINK, 2)
     add_text(slide, "Docker Compose runs frontend, backend, and ChromaDB together for local development and deployment testing.", 1.0, 5.35, 10.8, 0.45, size=17, color=MUTED)
+    add_notes(slide, "~40 seconds\n\nThree layers. Frontend: Next.js 14, TypeScript, TailwindCSS, Framer Motion, and Three.js for the 3D robot. Backend: FastAPI with async routes for search, transcripts, chunking, vector storage, chat, agent, and speech. AI layer: LangChain tools, OpenAI GPT-4o-mini for chat and text-embedding-3-small for vectors, ChromaDB as the vector store, and Whisper as a fallback for videos without captions.\n\nEverything ships as three Docker containers orchestrated by Docker Compose and deployed on AWS EC2.")
 
 
 def slide_ingestion(prs):
@@ -249,6 +257,7 @@ def slide_ingestion(prs):
     add_text(slide, "Status stream", 8.48, 2.2, 3.0, 0.35, size=15, color=AMBER, bold=True, caps=True, spacing=1.5)
     add_text(slide, "metadata\ntranscript\nchunking\nembeddings\nvector_storage\nready / error", 8.5, 2.75, 2.9, 2.2, size=19, color=INK)
     add_text(slide, "The processing screen reflects backend progress, not only decoration.", 8.5, 5.1, 3.0, 0.36, size=11, color=MUTED)
+    add_notes(slide, "~40 seconds\n\nWhen you click Prepare, the ingestion pipeline runs live. The YouTube Data API fetches the video metadata. youtube-transcript-api pulls the captions — no audio download needed in the normal flow. LangChain splits the transcript into overlapping chunks and keeps the timestamp attached to each one. OpenAI embeds each chunk and ChromaDB stores them for similarity search.\n\nThe status stream on the right — metadata, transcript, chunking, embeddings, storage — is live WebSocket progress from the backend, not just decoration.")
 
 
 def slide_agent(prs):
@@ -274,6 +283,7 @@ def slide_agent(prs):
 
     add_card(slide, "Guardrails", "The final answer must use answer_question, stay transcript-only, and include timestamp citations. Off-topic questions should be refused.", 8.15, 2.35, 3.85, 2.25, PINK)
     add_card(slide, "Memory", "ConversationMemoryService keeps session-based history so follow-up questions remain coherent.", 8.15, 4.85, 3.85, 1.15, CYAN)
+    add_notes(slide, "~50 seconds\n\nThe chat is not just a single prompt — it uses a real tool-calling agent. I built seven LangChain StructuredTools: search YouTube, extract transcript, chunk, store vectors, full ingest, retrieve context, and answer question.\n\nThe agent decides which tools to call based on the question. For a chat question it calls retrieve_context then answer_question. For a new video request it chains through the full ingestion flow automatically.\n\nTwo guardrails are enforced: answers must come from the transcript only, and off-topic questions must be refused. ConversationMemoryService keeps session history so follow-up questions stay coherent.")
 
 
 def slide_rag(prs):
@@ -287,6 +297,7 @@ def slide_rag(prs):
     for x in [3.25, 5.95, 8.65]:
         add_line(slide, x, 2.92, x + 0.22, 2.92, CYAN, 2)
     add_text(slide, "If the transcript does not contain the answer, the system says it cannot answer from the video. This is the main anti-hallucination behavior.", 0.95, 5.25, 10.8, 0.5, size=18, color=MUTED)
+    add_notes(slide, "~45 seconds\n\nThe RAG pipeline is four steps. Retrieve: ChromaDB finds the most relevant transcript chunks by semantic similarity. Inject: the prompt receives those chunks, the conversation memory, and strict grounding rules. Generate: GPT-4o-mini writes an answer using only what is in the context. Cite: the response includes timestamp chips that link to the exact moment in the video.\n\nIf the answer is not in the transcript, the system says it cannot answer from this video. That refusal is the core anti-hallucination mechanism.")
 
 
 def slide_voice_ux(prs):
@@ -297,6 +308,7 @@ def slide_voice_ux(prs):
     add_card(slide, "Assistant", "A floating 3D robot moves through the journey, speaks short guidance, and opens a compact transcript-grounded chat.", 4.85, 2.1, 3.65, 2.0, PURPLE)
     add_card(slide, "Accessibility", "Semantic labels, visible focus states, reduced-motion handling, screen-reader status messages, and touch-friendly layouts.", 8.95, 2.1, 3.65, 2.0, GREEN)
     add_text(slide, "Extra polish: loading skeletons, retry states, TTS answer playback, responsive stacking, and collapsible evidence panels.", 0.95, 5.25, 10.8, 0.5, size=18, color=MUTED)
+    add_notes(slide, "~30 seconds\n\nThe UI is designed to feel like a real product. Voice search tries the browser Web Speech API first, and automatically falls back to MediaRecorder plus Whisper if it fails. The 3D robot moves through the journey stages and speaks short guidance at each step. Accessibility is built in: semantic labels, visible focus states, reduced-motion support, and screen-reader status messages.")
 
 
 def slide_evaluation(prs):
@@ -321,6 +333,7 @@ def slide_evaluation(prs):
         size=15,
         accent=GREEN,
     )
+    add_notes(slide, "~35 seconds\n\nThe project has 98 pytest tests covering routes, services, tools, WebSocket ingest, speech, and the RAG pipeline. I also built 17 hand-crafted RAG evaluation cases that test answerable questions, refusals, citation accuracy, summaries, memory, and hallucination prevention — all pass with zero behavioral failures. LangSmith tracing is available for live chain inspection, and the inline heuristic evaluator scores every RAG response at inference time.")
 
 
 def slide_demo(prs):
@@ -351,6 +364,7 @@ def slide_demo(prs):
     add_text(slide, "What to emphasize", 8.38, 2.38, 3.2, 0.35, size=14, color=PINK, bold=True, caps=True, spacing=1.5)
     add_text(slide, "This is not a generic chatbot. It is a transcript-grounded learning workflow with tools, memory, vector search, citations, and a polished UI.", 8.38, 3.0, 3.1, 1.45, size=18, color=INK)
     add_text(slide, "Keep the demo focused on trust: every answer links back to the video. EC2 proves deployment; local run proves full transcript access when YouTube blocks cloud IPs.", 8.38, 4.65, 3.1, 0.9, size=11, color=MUTED)
+    add_notes(slide, "~90 seconds\n\nLet me show you the live app. Open http://18.157.233.122:3001/ — this is running on AWS EC2 with a Webshare residential proxy to bypass YouTube's cloud IP restrictions.\n\n[Search] I'll type 'python tutorial for beginners' and apply a duration filter. [Results appear] Pick a video and click Prepare. [Watch the progress steps: metadata, transcript, chunking, embeddings, storage.]\n\n[Chat] Now I ask: 'What is Python used for?' — [Answer appears with timestamp chips] See the citations — each one links to the exact moment in the video. [Click a timestamp]\n\n[Follow-up] Now a follow-up: 'Can you give me an example?' — the memory keeps the context so it understands what I mean.\n\n[Refusal] Now I ask something off-topic like 'What is the weather today?' — it refuses. It only answers from the video transcript. That is the trust guarantee.")
 
 
 def slide_close(prs):
@@ -362,6 +376,7 @@ def slide_close(prs):
     add_card(slide, "Optional features", "Voice input, Whisper fallback, WebSocket streaming, TTS, 3D assistant, and LangSmith tracing are included.", 4.95, 4.1, 3.8, 1.35, PINK)
     add_card(slide, "Next improvements", "Persistent user accounts, multi-video comparison, HTTPS custom domain, and a stronger production transcript proxy.", 9.05, 4.1, 3.4, 1.35, CYAN)
     add_text(slide, "Thank you", 0.85, 6.72, 3.0, 0.3, size=14, color=MUTED, bold=True)
+    add_notes(slide, "~15 seconds\n\nAskTube AI covers all the mandatory IronHack requirements: LLM chatbot, LangChain tools, conversational memory, ChromaDB vector database, text processing, a polished UI, 98 tests, RAG evaluation, and Docker deployment on EC2. Thank you.")
 
 
 def build() -> None:
