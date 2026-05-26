@@ -182,7 +182,8 @@ def slide_cover(prs):
     add_bg(slide)
     add_text(slide, "AskTube AI", 0.7, 1.0, 7.6, 0.95, size=58, color=INK, bold=True)
     add_text(slide, "Chat with YouTube videos through transcript-grounded AI.", 0.75, 2.0, 7.8, 0.55, size=21, color=CYAN)
-    add_text(slide, "Final Project | Sabeur Zarai | IronHack | Docker + EC2", 0.78, 6.78, 6.6, 0.28, size=12, color=MUTED, bold=True)
+    add_text(slide, "Final Project | Sabeur Zarai | IronHack | Docker + EC2", 0.78, 6.55, 6.6, 0.28, size=12, color=MUTED, bold=True)
+    add_text(slide, "Live demo: http://18.157.233.122:3001/", 0.78, 6.82, 7.5, 0.28, size=12, color=CYAN, bold=True)
 
     add_shape(slide, 8.0, 1.0, 4.4, 4.8, CARD, transparency=0, line_color=CYAN)
     add_text(slide, "SEARCH", 8.35, 1.42, 3.7, 0.35, size=16, color=CYAN, bold=True, caps=True, spacing=2.5)
@@ -329,7 +330,7 @@ def slide_demo(prs):
     add_bullets(
         slide,
         [
-            "Open localhost:3000 for the full RAG demo, or EC2 :3001 to show deployment.",
+            "Live app: http://18.157.233.122:3001/ (EC2 deployment with Webshare proxy)",
             "Search with a duration filter, for example: python tutorial for beginners under 10 minutes.",
             "Pick a video and click Prepare to show real ingestion progress.",
             "Ask: What is Python used for?",
