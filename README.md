@@ -72,9 +72,11 @@ The current hosted demo runs the three Docker services on a single EC2 instance:
 
 | Service | Public access |
 |---------|---------------|
-| Frontend | `http://<EC2_PUBLIC_IP>:3000` |
+| Frontend | `http://<EC2_PUBLIC_IP>:3001` |
 | Backend | `http://<EC2_PUBLIC_IP>:8000` |
 | ChromaDB | internal Docker service, optionally exposed on `8001` for debugging |
+
+**Live demo:** http://18.157.233.122:3001/
 
 Quick deployment flow:
 

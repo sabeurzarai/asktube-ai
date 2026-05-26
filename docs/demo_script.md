@@ -4,6 +4,8 @@ Presentation guide for the IronHack final project. Total time: ~8 minutes.
 
 For a tighter 7-minute talk, use `docs/AskTube_AI_7min_speaker_notes.md`.
 
+**Live app:** http://18.157.233.122:3001/
+
 ---
 
 ## 1. Two-Minute Overview (say this first)

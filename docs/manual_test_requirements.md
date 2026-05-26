@@ -1,5 +1,7 @@
 # AskTube AI Manual Test Requirements
 
+**Live app for testing:** http://18.157.233.122:3001/
+
 ## Document Purpose
 
 This document defines manual testing requirements for AskTube AI.
