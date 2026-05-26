@@ -17,7 +17,7 @@
 - Modular architecture: one concern per file, clean reusable components
 - TypeScript everywhere on the frontend; async endpoints on the backend
 - Production-ready structure — no debug prints, no hardcoded secrets
-- Run `pytest` from `backend/` before every commit; all 82 tests must pass
+- Run `pytest` from `backend/` before every commit; all 98 tests must pass
 - Rebuild Docker containers after backend or frontend dependency changes: `docker compose up --build`
 
 ## AI / RAG Rules

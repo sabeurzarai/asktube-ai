@@ -248,7 +248,7 @@
   <g transform="translate(1080 940)">
     <rect width="450" height="100" rx="28" class="panel"/>
     <text x="28" y="40" class="section-kicker">DEPLOYMENT</text>
-    <text x="28" y="72" class="body">Local dev • production images • Render/Railway-ready architecture</text>
+    <text x="28" y="72" class="body">Local dev • production images • EC2-hosted Docker architecture</text>
   </g>
 
   <g transform="translate(70 550)">

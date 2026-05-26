@@ -13,7 +13,7 @@ AI-powered YouTube learning platform. Search for videos, extract transcripts, an
 | AI | OpenAI GPT-4o-mini, text-embedding-3-small, Whisper |
 | Observability | LangSmith (optional tracing) |
 | Data | YouTube Data API v3, youtube-transcript-api 1.2.4 |
-| Infra | Docker, Docker Compose, Render |
+| Infra | Docker, Docker Compose, AWS EC2, optional Render |
 
 ---
 
@@ -63,6 +63,40 @@ docker compose up --build
 ```
 
 Open **http://localhost:3000**.
+
+---
+
+## Deploying to AWS EC2
+
+The current hosted demo runs the three Docker services on a single EC2 instance:
+
+| Service | Public access |
+|---------|---------------|
+| Frontend | `http://<EC2_PUBLIC_IP>:3001` |
+| Backend | `http://<EC2_PUBLIC_IP>:8000` |
+| ChromaDB | internal Docker service, optionally exposed on `8001` for debugging |
+
+Quick deployment flow:
+
+```bash
+git clone https://github.com/sabeurzarai/asktube-ai.git
+cd asktube-ai
+cp .env.example .env
+nano .env
+docker-compose up -d --build
+```
+
+For EC2, set:
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP>:8000
+NEXT_PUBLIC_WS_URL=ws://<EC2_PUBLIC_IP>:8000
+CORS_ORIGINS=http://<EC2_PUBLIC_IP>:3001,http://localhost:3000
+```
+
+If port `3000` is already occupied, map the frontend as `3001:3000` in `docker-compose.yml` and open port `3001` in the EC2 security group.
+
+> Note: YouTube often blocks transcript extraction from AWS/cloud IPs. The project includes Webshare residential proxy support through `WEBSHARE_PROXY_URL`, `WEBSHARE_PROXY_USERNAME`, `WEBSHARE_PROXY_PASSWORD`, and `WEBSHARE_PROXY_LOCATIONS`, but the most reliable full RAG demo is still local unless the proxy endpoint supports HTTPS CONNECT to YouTube.
 
 ---
 
@@ -212,7 +246,7 @@ AskTube AI/
 |   +-- tests/
 |   |   +-- fixtures/
 |   |   |   +-- rag_eval_cases.json  # 17 RAG evaluation cases
-|   |   +-- ...                   # 82 pytest tests total
+|   |   +-- ...                   # 98 pytest tests total
 |   +-- requirements.txt
 |   +-- Dockerfile                # Production build with ffmpeg
 |
@@ -272,7 +306,7 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 `transcript_service.py` fetches captions via `youtube-transcript-api` and cleans the raw segments. `chunking_service.py` splits the cleaned text into overlapping chunks using LangChain's splitter, preserving timestamp metadata on each chunk. This pipeline converts raw YouTube captions into retrieval-ready documents.
 
 ### Testing and Evaluation
-- **82 pytest tests** covering services, routes, tools, and the agent pipeline.
+- **98 pytest tests** covering services, routes, tools, speech, WebSocket ingestion, and the agent pipeline.
 - **Evaluation dataset**: `tests/fixtures/rag_eval_cases.json` - 17 hand-crafted RAG cases with expected answers and metadata.
 - **CLI runner**: `scripts/run_evaluation.py` executes the evaluation dataset against the live backend and reports per-case scores.
 - **Inline heuristic evaluation**: `RAG_EVALUATOR_MODE=heuristic` scores each RAG response at inference time (source coverage, answer length, hallucination-risk flag) and includes scores in the API response.
@@ -284,7 +318,7 @@ The project ships three Docker containers orchestrated via Docker Compose:
 2. `backend` - FastAPI + LangChain application
 3. `frontend` - Next.js production build
 
-All three services are deployed to **Render** following the steps in the [Deploying to Render](#deploying-to-render) section.
+The project is deployed with Docker Compose on **AWS EC2** for the hosted demo and remains Render-compatible through the service-level Dockerfiles.
 
 ### YouTube Transcript API Usage
 `youtube-transcript-api` (v1.2.4) is the **primary** and **preferred** method for extracting text from YouTube videos. It fetches publicly available auto-generated or manually uploaded captions without downloading any audio or video. See [YouTube Data Strategy](docs/youtube_data_strategy.md) for full details.

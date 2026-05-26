@@ -182,7 +182,7 @@ def slide_cover(prs):
     add_bg(slide)
     add_text(slide, "AskTube AI", 0.7, 1.0, 7.6, 0.95, size=58, color=INK, bold=True)
     add_text(slide, "Chat with YouTube videos through transcript-grounded AI.", 0.75, 2.0, 7.8, 0.55, size=21, color=CYAN)
-    add_text(slide, "Final Project | Sabeur Zarai | IronHack", 0.78, 6.78, 6.2, 0.28, size=12, color=MUTED, bold=True)
+    add_text(slide, "Final Project | Sabeur Zarai | IronHack | Docker + EC2", 0.78, 6.78, 6.6, 0.28, size=12, color=MUTED, bold=True)
 
     add_shape(slide, 8.0, 1.0, 4.4, 4.8, CARD, transparency=0, line_color=CYAN)
     add_text(slide, "SEARCH", 8.35, 1.42, 3.7, 0.35, size=16, color=CYAN, bold=True, caps=True, spacing=2.5)
@@ -190,7 +190,7 @@ def slide_cover(prs):
     add_text(slide, "RAG", 8.35, 2.9, 3.7, 0.45, size=25, color=INK, bold=True, caps=True, spacing=2.5)
     add_text(slide, "CITATIONS", 8.35, 3.72, 3.7, 0.35, size=16, color=GREEN, bold=True, caps=True, spacing=2.5)
     add_line(slide, 8.35, 4.45, 11.8, 4.45, PINK, 2)
-    add_text(slide, "Netflix-inspired UI + FastAPI + LangChain + ChromaDB", 8.35, 4.72, 3.55, 0.5, size=13, color=MUTED)
+    add_text(slide, "Netflix-inspired UI + FastAPI + LangChain + ChromaDB + EC2", 8.35, 4.72, 3.55, 0.5, size=13, color=MUTED)
 
 
 def slide_problem_solution(prs):
@@ -217,7 +217,7 @@ def slide_journey(prs):
         add_stage(slide, *stage)
     for x in [2.98, 5.53, 8.08]:
         add_line(slide, x, 2.82, x + 0.22, 2.82, CYAN, 2)
-    add_text(slide, "The UI is intentionally cinematic: dark mode, glass surfaces, smooth transitions, a 3D assistant, and graceful loading/error states.", 0.8, 5.25, 11.4, 0.55, size=18, color=MUTED)
+    add_text(slide, "The UI is intentionally cinematic: dark mode, glass surfaces, duration filters, smooth transitions, a 3D assistant, and graceful loading/error states.", 0.8, 5.25, 11.4, 0.55, size=17, color=MUTED)
 
 
 def slide_architecture(prs):
@@ -237,9 +237,9 @@ def slide_ingestion(prs):
     add_bg(slide, "04 / Ingestion Pipeline")
     add_text(slide, "A YouTube video becomes retrieval-ready text.", 0.65, 0.98, 8.4, 0.6, size=33, color=INK, bold=True)
     items = [
-        "YouTube Data API retrieves metadata, thumbnails, duration, and channel information.",
+        "YouTube Data API retrieves metadata, thumbnails, duration, and channel information, then applies the selected length filter.",
         "youtube-transcript-api is the primary source for public captions and timestamps.",
-        "Whisper is used only as a fallback when captions are unavailable.",
+        "Whisper is used only as a fallback when captions are unavailable and the deployment can safely fetch audio.",
         "LangChain chunking keeps timestamp metadata attached to every chunk.",
         "OpenAI embeddings are stored in ChromaDB for similarity search."
     ]
@@ -281,7 +281,7 @@ def slide_rag(prs):
     add_text(slide, "Answers are grounded in transcript evidence.", 0.65, 0.98, 8.3, 0.6, size=33, color=INK, bold=True)
     add_stage(slide, "1", "Retrieve", "ChromaDB returns top transcript chunks.", 0.85, 2.2, CYAN)
     add_stage(slide, "2", "Inject", "Prompt receives context, memory, and rules.", 3.55, 2.2, PINK)
-    add_stage(slide, "3", "Generate", "GPT-4o-mini writes the answer.", 6.25, 2.2, AMBER)
+    add_stage(slide, "3", "Generate", "GPT-4o-mini writes from retrieved context.", 6.25, 2.2, AMBER)
     add_stage(slide, "4", "Cite", "Timestamp chips point to source moments.", 8.95, 2.2, GREEN)
     for x in [3.25, 5.95, 8.65]:
         add_line(slide, x, 2.92, x + 0.22, 2.92, CYAN, 2)
@@ -302,7 +302,7 @@ def slide_evaluation(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     add_bg(slide, "08 / Testing + Evaluation")
     add_text(slide, "The project is testable, explainable, and demo-ready.", 0.65, 0.98, 8.8, 0.6, size=33, color=INK, bold=True)
-    add_metric(slide, "82", "pytest tests", 0.9, 2.15, 2.0, CYAN)
+    add_metric(slide, "98", "pytest tests", 0.9, 2.15, 2.0, CYAN)
     add_metric(slide, "17", "RAG eval cases", 3.35, 2.15, 2.2, PINK)
     add_metric(slide, "0", "behavioral fails", 6.0, 2.15, 2.2, GREEN)
     add_metric(slide, "3", "Docker services", 8.45, 2.15, 2.2, AMBER)
@@ -329,13 +329,15 @@ def slide_demo(prs):
     add_bullets(
         slide,
         [
-            "Open localhost:3000 and search: python tutorial for beginners.",
+            "Open localhost:3000 for the full RAG demo, or EC2 :3001 to show deployment.",
+            "Search with a duration filter, for example: python tutorial for beginners under 10 minutes.",
             "Pick a video and click Prepare to show real ingestion progress.",
             "Ask: What is Python used for?",
             "Show timestamp citations and the tool breadcrumb.",
             "Ask a follow-up to demonstrate memory.",
             "Ask an unrelated question to show refusal behavior.",
-            "Use mic input and Read aloud if time allows."
+            "Use mic input and Read aloud if time allows.",
+            "Show EC2 health endpoint and explain the YouTube cloud-IP transcript limitation."
         ],
         0.95,
         2.0,
@@ -347,7 +349,7 @@ def slide_demo(prs):
     add_shape(slide, 8.05, 2.05, 3.9, 3.75, CARD, transparency=0, line_color=PINK)
     add_text(slide, "What to emphasize", 8.38, 2.38, 3.2, 0.35, size=14, color=PINK, bold=True, caps=True, spacing=1.5)
     add_text(slide, "This is not a generic chatbot. It is a transcript-grounded learning workflow with tools, memory, vector search, citations, and a polished UI.", 8.38, 3.0, 3.1, 1.45, size=18, color=INK)
-    add_text(slide, "Keep the demo focused on trust: every answer links back to the video.", 8.38, 4.9, 3.1, 0.55, size=12, color=MUTED)
+    add_text(slide, "Keep the demo focused on trust: every answer links back to the video. EC2 proves deployment; local run proves full transcript access when YouTube blocks cloud IPs.", 8.38, 4.65, 3.1, 0.9, size=11, color=MUTED)
 
 
 def slide_close(prs):
@@ -357,7 +359,7 @@ def slide_close(prs):
     add_text(slide, "Search videos. Build transcript knowledge. Ask questions. Verify with timestamps.", 0.85, 2.65, 9.7, 0.5, size=21, color=CYAN)
     add_card(slide, "Mandatory requirements", "LLM chatbot, tools, memory, vector database, text processing, UI, tests, evaluation, and Docker deployment are covered.", 0.85, 4.1, 3.8, 1.35, GREEN)
     add_card(slide, "Optional features", "Voice input, Whisper fallback, WebSocket streaming, TTS, 3D assistant, and LangSmith tracing are included.", 4.95, 4.1, 3.8, 1.35, PINK)
-    add_card(slide, "Next improvements", "Persistent memory, streaming agent responses, user accounts, multi-video comparison, and hosted deployment.", 9.05, 4.1, 3.4, 1.35, CYAN)
+    add_card(slide, "Next improvements", "Persistent user accounts, multi-video comparison, HTTPS custom domain, and a stronger production transcript proxy.", 9.05, 4.1, 3.4, 1.35, CYAN)
     add_text(slide, "Thank you", 0.85, 6.72, 3.0, 0.3, size=14, color=MUTED, bold=True)
 
 

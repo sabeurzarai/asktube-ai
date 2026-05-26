@@ -25,6 +25,8 @@ AskTube AI is a cinematic AI-powered YouTube learning platform combining:
 |---|---|
 | Local frontend | `http://localhost:3000` |
 | Local backend | `http://localhost:8000` |
+| EC2 frontend | `http://<EC2_PUBLIC_IP>:3001` when port 3000 is occupied |
+| EC2 backend | `http://<EC2_PUBLIC_IP>:8000` |
 | API docs | `http://localhost:8000/docs` |
 | Health check | `GET http://localhost:8000/health` -> `{"status":"ok"}` |
 | Browser | Latest Chrome, Edge, or Firefox |
@@ -64,6 +66,13 @@ Expected: {"status": "ok", "service": "AskTube AI"}
 GET /api/search?q=python+tutorial&max_results=5
 Expected: {"query":..., "count":5, "videos":[...]}
 Each video must include: video_id, title, channel_title, thumbnail_url, duration_seconds, youtube_url
+```
+
+Duration-filter variant:
+
+```
+GET /api/search?q=python+tutorial&max_results=5&duration_filter=under_10
+Expected: all returned videos have duration_seconds < 600 when duration metadata is available
 ```
 
 ### API-003 Transcript Extraction
@@ -296,7 +305,7 @@ Run before demo or submission:
 - [ ] Transcript panel toggles on mobile
 - [ ] No horizontal overflow at 390px
 - [ ] Keyboard navigation works throughout
-- [ ] Backend tests: `cd backend && python -m pytest -q` -> 82 pass (or 81/82 with the known search-route skipped test)
+- [ ] Backend tests: `cd backend && python -m pytest -q` -> 98 pass
 - [ ] Voice search Whisper fallback: trigger Web Speech API network error, tap mic a second time, record >1.5s, verify transcript fills the search box
 - [ ] Mic exclusive mode (Windows): if microphone captures silence (0-level), close Zoom and re-test before reporting a bug
 
@@ -304,7 +313,7 @@ Run before demo or submission:
 
 ## Automated Test Summary
 
-82 pytest tests:
+98 pytest tests:
 
 | Test file | Count | Covers |
 |---|---|---|
@@ -312,15 +321,16 @@ Run before demo or submission:
 | `test_agent_service.py` | 14 | Agent tool dispatch, memory, citations |
 | `test_tools.py` | 21 | All 7 LangChain tools |
 | `test_ingest_stream.py` | 5 | WebSocket ingest stream events |
+| `test_memory_service.py` | 12 | Session memory, history limits, and reset behavior |
 | `test_chat_route.py` | 3 | REST + WebSocket streaming chat |
 | `test_rag_service.py` | 4 | RAG utilities (timestamps, citations, memory) |
 | `test_chunking_service.py` | 2 | Semantic chunking |
 | `test_chunking_route.py` | 1 | Chunking route |
 | `test_transcript_route.py` | 1 | Transcript extraction route |
-| `test_transcript_service.py` | 3 | Transcript normalization |
+| `test_transcript_service.py` | 6 | Transcript normalization and proxy configuration |
 | `test_vectorstore_route.py` | 1 | Vectorstore route |
 | `test_vectorstore_service.py` | 2 | ChromaDB helpers |
 | `test_observability_service.py` | 4 | Evaluation metrics |
-| `test_youtube_service.py` | 2 | YouTube utilities |
+| `test_youtube_service.py` | 3 | YouTube utilities and duration filtering |
 | `test_search_route.py` | 1 | Search route (pre-existing failure: expects 503 when API key present) |
 | `test_speech_route.py` | 11 | Whisper transcription endpoint: transcript return, whitespace stripping, hallucination filter, 1500-byte minimum, 503/502/422 errors, prompt parameter |

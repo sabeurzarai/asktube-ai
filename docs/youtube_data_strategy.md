@@ -76,6 +76,31 @@ If the WebSocket connection fails, the frontend falls back to the REST endpoint 
 
 ---
 
+## Cloud Deployment and Proxy Reality
+
+YouTube often blocks transcript requests from AWS, GCP, Azure, and other cloud-provider IP ranges. This is an infrastructure limitation of unofficial transcript retrieval, not a FastAPI or LangChain failure.
+
+AskTube AI supports two proxy modes:
+
+| Mode | Environment variables | Notes |
+|---|---|---|
+| Exact proxy URL | `WEBSHARE_PROXY_URL` | Preferred when Webshare provides a working curl/python proxy URL. The backend passes this into `GenericProxyConfig`. |
+| Webshare helper | `WEBSHARE_PROXY_USERNAME`, `WEBSHARE_PROXY_PASSWORD`, `WEBSHARE_PROXY_LOCATIONS` | Lets `youtube-transcript-api` construct a Webshare residential proxy config. |
+
+For EC2 demos:
+
+- Use EC2 to prove Docker deployment, backend health, search, and the hosted UI.
+- Use local development for the most reliable full transcript/RAG demo if the proxy endpoint cannot tunnel HTTPS to YouTube.
+- Test proxies outside the app first:
+
+```bash
+curl -v --proxy "http://USER:PASS@p.webshare.io:80" https://api.ipify.org
+```
+
+If this command fails, the proxy endpoint/account is the issue. Ask the proxy provider for a Rotating Residential HTTPS CONNECT endpoint.
+
+---
+
 ## No Copyrighted Media in the Repository
 
 The following policy applies unconditionally:

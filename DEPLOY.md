@@ -93,11 +93,12 @@ Required values to set:
 YOUTUBE_API_KEY=<your-youtube-data-api-v3-key>
 OPENAI_API_KEY=<your-openai-api-key>
 
-# Frontend URL — set to your EC2 public IP or domain
-NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP_OR_DOMAIN>
+# Frontend build-time API URLs - set to your EC2 public IP or domain
+NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP_OR_DOMAIN>:8000
+NEXT_PUBLIC_WS_URL=ws://<EC2_PUBLIC_IP_OR_DOMAIN>:8000
 
-# CORS — must match the URL your browser uses to reach the app
-CORS_ORIGINS=http://<EC2_PUBLIC_IP_OR_DOMAIN>
+# CORS - must match the URL your browser uses to reach the app
+CORS_ORIGINS=http://<EC2_PUBLIC_IP_OR_DOMAIN>:3001,http://localhost:3000
 
 # ChromaDB — Docker service name, do not change
 CHROMA_USE_HTTP=true
@@ -128,10 +129,10 @@ docker compose up -d --build
 ```
 
 Services will be reachable at:
-- Frontend: `http://<EC2_PUBLIC_IP>:3000`
+- Frontend: `http://<EC2_PUBLIC_IP>:3000` or `http://<EC2_PUBLIC_IP>:3001` if port 3000 is already occupied
 - Backend: `http://<EC2_PUBLIC_IP>:8000`
 
-> You will need to temporarily open ports 3000 and 8000 in the security group for this.
+> You will need to temporarily open ports 3000 or 3001 and 8000 in the security group for this.
 
 ### With Nginx (recommended)
 
@@ -290,13 +291,18 @@ extraction from them. Without a residential proxy you will get
 ### Add to `.env`
 
 ```dotenv
-# Webshare residential proxy — required on EC2 for transcript extraction
+# Webshare residential proxy - required on EC2 for transcript extraction
+# Preferred when Webshare gives a full proxy integration URL:
+WEBSHARE_PROXY_URL=http://<username>:<password>@p.webshare.io:80
+
+# Alternative: let youtube-transcript-api build the Webshare proxy URL:
 WEBSHARE_PROXY_USERNAME=<your-webshare-username>
 WEBSHARE_PROXY_PASSWORD=<your-webshare-password>
 WEBSHARE_PROXY_LOCATIONS=US,GB   # comma-separated ISO country codes, or leave blank for any
 ```
 
-`WEBSHARE_PROXY_LOCATIONS` is optional. Leave it blank to use any available
+`WEBSHARE_PROXY_URL` takes priority when set. Use the exact URL from Webshare's
+Proxy Integration curl/python snippet, without a trailing slash. `WEBSHARE_PROXY_LOCATIONS` is optional. Leave it blank to use any available
 exit node; set one or more country codes to pin to a specific region (useful
 for geo-restricted content).
 
@@ -304,10 +310,11 @@ for geo-restricted content).
 
 The backend picks up the credentials automatically at startup:
 
-- **Credentials present** → `YouTubeTranscriptApi` routes all transcript
+- **Exact proxy URL present** -> `YouTubeTranscriptApi` receives a `GenericProxyConfig`.
+- **Credentials present** -> `YouTubeTranscriptApi` routes all transcript
   requests through Webshare's residential pool with 5 automatic retries on
   block.
-- **Credentials absent** → direct connection (works on localhost, fails on EC2).
+- **Credentials absent** -> direct connection (works on localhost, commonly fails on EC2).
 
 No code change or container rebuild is required — only the `.env` values need
 to be set. Restart the backend after updating `.env`:
@@ -332,6 +339,12 @@ docker compose exec backend env | grep WEBSHARE
 
 **`407 Proxy Authentication Required` in logs**
 - Username or password is wrong. Re-copy from the Webshare dashboard.
+
+**`Tunnel connection failed: 400 Bad Request` or TLS closes through the proxy**
+- First test Webshare outside AskTube:
+  `curl -v --proxy "http://USER:PASS@p.webshare.io:80" https://api.ipify.org`
+- If the curl test fails, the proxy endpoint/account is the issue, not the app.
+- Ask Webshare for the correct Rotating Residential HTTPS CONNECT endpoint or demo the full RAG pipeline locally.
 
 **Proxy works but is slow**
 - Residential proxies add ~200–500 ms latency per transcript request. This is

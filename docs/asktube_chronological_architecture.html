@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AskTube AI Chronological Architecture</title>
+<style>
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #e8e4dc;
+    display: flex;
+    justify-content: center;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  .wrap {
+    background: #fafaf5;
+    border-radius: 6px;
+    box-shadow: 5px 5px 24px rgba(0, 0, 0, 0.18), 2px 2px 8px rgba(0, 0, 0, 0.10);
+    display: inline-block;
+    overflow: hidden;
+  }
+
+  svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg width="1120" height="1720" viewBox="0 0 1120 1720" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" role="img" aria-labelledby="title desc">
+<title id="title">AskTube AI Chronological Process Architecture</title>
+<desc id="desc">A top-to-bottom explanation of how AskTube AI works chronologically, from user search and YouTube API calls through transcript extraction, chunking, vector storage, RAG retrieval, LangChain agent orchestration, and final timestamped answers.</desc>
+
+<defs>
+  <marker id="arrow" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
+    <polygon points="0 0,12 5,0 10" fill="#263238"/>
+  </marker>
+  <marker id="arrowBlue" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
+    <polygon points="0 0,12 5,0 10" fill="#1565c0"/>
+  </marker>
+  <marker id="arrowPink" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
+    <polygon points="0 0,12 5,0 10" fill="#c2185b"/>
+  </marker>
+  <marker id="arrowGreen" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
+    <polygon points="0 0,12 5,0 10" fill="#2e7d32"/>
+  </marker>
+  <marker id="arrowOrange" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
+    <polygon points="0 0,12 5,0 10" fill="#ef6c00"/>
+  </marker>
+
+  <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+    <path d="M24 0L0 0 0 24" fill="none" stroke="#e2ddd5" stroke-width="0.55"/>
+  </pattern>
+
+  <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+    <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.12"/>
+  </filter>
+</defs>
+
+<rect width="1120" height="1720" fill="#fafaf5"/>
+<rect width="1120" height="1720" fill="url(#grid)" opacity="0.72"/>
+
+<!-- Header -->
+<rect x="0" y="0" width="1120" height="112" fill="#fbf8ef"/>
+<text x="36" y="42" fill="#1a1a2e" font-size="28" font-weight="900">ASKTUBE AI</text>
+<text x="36" y="73" fill="#1a1a2e" font-size="24" font-weight="900">CHRONOLOGICAL ARCHITECTURE</text>
+<text x="36" y="95" fill="#546e7a" font-size="13" font-weight="700">FROM YOUTUBE SEARCH TO TIMESTAMPED AI ANSWER</text>
+
+<rect x="545" y="24" width="535" height="58" rx="10" fill="#263238"/>
+<text x="812" y="48" fill="#ffffff" font-size="14" font-weight="800" text-anchor="middle">HOW TO EXPLAIN IT TO THE TEACHER</text>
+<text x="812" y="69" fill="#cfd8dc" font-size="12" text-anchor="middle">User -> Frontend -> FastAPI -> YouTube/Transcript -> ChromaDB -> LangChain RAG -> Answer</text>
+
+<!-- Column labels -->
+<text x="86" y="144" fill="#1a237e" font-size="13" font-weight="900" letter-spacing="1.3">USER / UI</text>
+<text x="338" y="144" fill="#0d47a1" font-size="13" font-weight="900" letter-spacing="1.3">FASTAPI BACKEND</text>
+<text x="638" y="144" fill="#bf360c" font-size="13" font-weight="900" letter-spacing="1.3">DATA + AI PIPELINE</text>
+<text x="915" y="144" fill="#4a148c" font-size="13" font-weight="900" letter-spacing="1.3">RESULT</text>
+
+<line x1="42" y1="158" x2="1078" y2="158" stroke="#c8c2b8" stroke-width="1.5"/>
+
+<!-- Timeline spine -->
+<line x1="560" y1="178" x2="560" y2="1548" stroke="#263238" stroke-width="3" stroke-dasharray="8,8"/>
+
+<!-- Helper shapes -->
+<!-- Step 1 -->
+<circle cx="560" cy="210" r="22" fill="#1565c0" stroke="#0d47a1" stroke-width="2"/>
+<text x="560" y="218" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">1</text>
+<rect x="58" y="176" width="408" height="112" rx="14" fill="#e8eaf6" stroke="#3949ab" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="82" y="205" fill="#1a237e" font-size="17" font-weight="900">User searches for a topic</text>
+<text x="82" y="229" fill="#3949ab" font-size="12">Text search or voice search from the cinematic search bar.</text>
+<text x="82" y="249" fill="#3949ab" font-size="12">Optional duration filter: any, under 10 min, under 30 min, under 1 hour, 1h+.</text>
+<text x="82" y="269" fill="#3949ab" font-size="12">Frontend stack: Next.js 14, TypeScript, TailwindCSS, Framer Motion.</text>
+<rect x="654" y="176" width="408" height="112" rx="14" fill="#e3f2fd" stroke="#1565c0" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="205" fill="#0d47a1" font-size="17" font-weight="900">Frontend calls FastAPI search</text>
+<text x="678" y="229" fill="#1565c0" font-size="12">GET /api/search?q=...&duration_filter=...</text>
+<text x="678" y="249" fill="#1565c0" font-size="12">Search state shows loading, empty, ready, or error.</text>
+<text x="678" y="269" fill="#1565c0" font-size="12">This creates the first bridge from UI to backend.</text>
+<line x1="466" y1="232" x2="654" y2="232" stroke="#1565c0" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
+
+<!-- Step 2 -->
+<line x1="560" y1="288" x2="560" y2="338" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="370" r="22" fill="#1565c0" stroke="#0d47a1" stroke-width="2"/>
+<text x="560" y="378" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">2</text>
+<rect x="118" y="332" width="348" height="96" rx="14" fill="#e3f2fd" stroke="#1565c0" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="142" y="361" fill="#0d47a1" font-size="17" font-weight="900">Backend searches YouTube</text>
+<text x="142" y="385" fill="#1565c0" font-size="12">YouTubeService calls YouTube Data API v3.</text>
+<text x="142" y="405" fill="#1565c0" font-size="12">It gets title, channel, thumbnail, duration, and URL.</text>
+<rect x="654" y="332" width="348" height="96" rx="14" fill="#fff8e1" stroke="#ef6c00" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="361" fill="#bf360c" font-size="17" font-weight="900">Results are filtered</text>
+<text x="678" y="385" fill="#e65100" font-size="12">Duration metadata is checked accurately.</text>
+<text x="678" y="405" fill="#e65100" font-size="12">Only videos matching the selected length are returned.</text>
+<line x1="466" y1="380" x2="654" y2="380" stroke="#ef6c00" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+
+<!-- Step 3 -->
+<line x1="560" y1="428" x2="560" y2="478" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="510" r="22" fill="#3949ab" stroke="#1a237e" stroke-width="2"/>
+<text x="560" y="518" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">3</text>
+<rect x="58" y="472" width="408" height="104" rx="14" fill="#e8eaf6" stroke="#3949ab" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="82" y="501" fill="#1a237e" font-size="17" font-weight="900">User selects a video card</text>
+<text x="82" y="525" fill="#3949ab" font-size="12">Video carousel shows Netflix-style cards.</text>
+<text x="82" y="545" fill="#3949ab" font-size="12">User clicks Prepare to start ingestion.</text>
+<text x="82" y="565" fill="#3949ab" font-size="12">The selected video_id becomes the key for the rest of the pipeline.</text>
+<rect x="654" y="472" width="408" height="104" rx="14" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="501" fill="#4a148c" font-size="17" font-weight="900">Processing screen starts</text>
+<text x="678" y="525" fill="#6a1b9a" font-size="12">Frontend opens WebSocket ingestion stream.</text>
+<text x="678" y="545" fill="#6a1b9a" font-size="12">WS /api/videos/{id}/ingest/stream</text>
+<text x="678" y="565" fill="#6a1b9a" font-size="12">User sees real backend stages, not only fake animation.</text>
+<line x1="466" y1="524" x2="654" y2="524" stroke="#7b1fa2" stroke-width="2.5" marker-end="url(#arrowPink)"/>
+
+<!-- Step 4 -->
+<line x1="560" y1="576" x2="560" y2="626" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="658" r="22" fill="#ef6c00" stroke="#bf360c" stroke-width="2"/>
+<text x="560" y="666" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">4</text>
+<rect x="118" y="620" width="348" height="122" rx="14" fill="#fff8e1" stroke="#ef6c00" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="142" y="649" fill="#bf360c" font-size="17" font-weight="900">Transcript extraction</text>
+<text x="142" y="673" fill="#e65100" font-size="12">Primary method: youtube-transcript-api.</text>
+<text x="142" y="693" fill="#e65100" font-size="12">It reads public captions and keeps timestamps.</text>
+<text x="142" y="713" fill="#e65100" font-size="12">If captions are missing, Whisper fallback can transcribe audio.</text>
+<rect x="654" y="620" width="348" height="122" rx="14" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="649" fill="#1b5e20" font-size="17" font-weight="900">Safety rule</text>
+<text x="678" y="673" fill="#2e7d32" font-size="12">Normal flow does not download full video/audio.</text>
+<text x="678" y="693" fill="#2e7d32" font-size="12">No YouTube authentication is used.</text>
+<text x="678" y="713" fill="#2e7d32" font-size="12">No copyrighted audio/video is committed to GitHub.</text>
+<line x1="466" y1="681" x2="654" y2="681" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
+
+<!-- Step 5 -->
+<line x1="560" y1="742" x2="560" y2="792" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="824" r="22" fill="#ef6c00" stroke="#bf360c" stroke-width="2"/>
+<text x="560" y="832" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">5</text>
+<rect x="58" y="786" width="408" height="112" rx="14" fill="#fff8e1" stroke="#ef6c00" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="82" y="815" fill="#bf360c" font-size="17" font-weight="900">Transcript is split into chunks</text>
+<text x="82" y="839" fill="#e65100" font-size="12">ChunkingService uses LangChain text splitting.</text>
+<text x="82" y="859" fill="#e65100" font-size="12">Long transcript becomes smaller semantic sections.</text>
+<text x="82" y="879" fill="#e65100" font-size="12">Each chunk keeps start_seconds, end_seconds, and timestamp labels.</text>
+<rect x="654" y="786" width="408" height="112" rx="14" fill="#fffde7" stroke="#f9a825" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="815" fill="#e65100" font-size="17" font-weight="900">Why chunking matters</text>
+<text x="678" y="839" fill="#f57f17" font-size="12">The LLM cannot receive a whole long video transcript every time.</text>
+<text x="678" y="859" fill="#f57f17" font-size="12">Chunks make retrieval precise and cheaper.</text>
+<text x="678" y="879" fill="#f57f17" font-size="12">This is the foundation of RAG.</text>
+<line x1="466" y1="842" x2="654" y2="842" stroke="#f9a825" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+
+<!-- Step 6 -->
+<line x1="560" y1="898" x2="560" y2="948" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="980" r="22" fill="#f9a825" stroke="#ef6c00" stroke-width="2"/>
+<text x="560" y="988" fill="#3b2500" font-size="20" font-weight="900" text-anchor="middle">6</text>
+<rect x="118" y="942" width="348" height="122" rx="14" fill="#fffde7" stroke="#f9a825" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="142" y="971" fill="#e65100" font-size="17" font-weight="900">Embeddings are generated</text>
+<text x="142" y="995" fill="#f57f17" font-size="12">Each transcript chunk becomes a vector.</text>
+<text x="142" y="1015" fill="#f57f17" font-size="12">Model: text-embedding-3-small.</text>
+<text x="142" y="1035" fill="#f57f17" font-size="12">Vectors allow semantic search, not only keyword search.</text>
+<rect x="654" y="942" width="348" height="122" rx="14" fill="#eceff1" stroke="#546e7a" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="971" fill="#263238" font-size="17" font-weight="900">Stored in ChromaDB</text>
+<text x="678" y="995" fill="#455a64" font-size="12">ChromaDB stores vectors + metadata.</text>
+<text x="678" y="1015" fill="#455a64" font-size="12">Metadata includes video_id, chunk_id, title, and timestamps.</text>
+<text x="678" y="1035" fill="#455a64" font-size="12">After this, the video is ready for chat.</text>
+<line x1="466" y1="1003" x2="654" y2="1003" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+<!-- Step 7 -->
+<line x1="560" y1="1064" x2="560" y2="1114" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="1146" r="22" fill="#7b1fa2" stroke="#4a148c" stroke-width="2"/>
+<text x="560" y="1154" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">7</text>
+<rect x="58" y="1108" width="408" height="112" rx="14" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="82" y="1137" fill="#4a148c" font-size="17" font-weight="900">User asks a question</text>
+<text x="82" y="1161" fill="#6a1b9a" font-size="12">Frontend sends message, selected video_id, and session_id.</text>
+<text x="82" y="1181" fill="#6a1b9a" font-size="12">Endpoint: POST /api/agent/chat.</text>
+<text x="82" y="1201" fill="#6a1b9a" font-size="12">The same session_id enables follow-up memory.</text>
+<rect x="654" y="1108" width="408" height="112" rx="14" fill="#fce4ec" stroke="#c2185b" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="1137" fill="#880e4f" font-size="17" font-weight="900">LangChain agent decides the tools</text>
+<text x="678" y="1161" fill="#ad1457" font-size="12">Tools: search, ingest, retrieve_context, answer_question.</text>
+<text x="678" y="1181" fill="#ad1457" font-size="12">If video is already ingested, it skips ingestion.</text>
+<text x="678" y="1201" fill="#ad1457" font-size="12">Tool steps are returned for debugging and demonstration.</text>
+<line x1="466" y1="1164" x2="654" y2="1164" stroke="#c2185b" stroke-width="2.5" marker-end="url(#arrowPink)"/>
+
+<!-- Step 8 -->
+<line x1="560" y1="1220" x2="560" y2="1270" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="1302" r="22" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>
+<text x="560" y="1310" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">8</text>
+<rect x="118" y="1264" width="348" height="122" rx="14" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="142" y="1293" fill="#1b5e20" font-size="17" font-weight="900">RAG retrieves relevant context</text>
+<text x="142" y="1317" fill="#2e7d32" font-size="12">The question is embedded and compared with ChromaDB chunks.</text>
+<text x="142" y="1337" fill="#2e7d32" font-size="12">Top-k transcript chunks are selected.</text>
+<text x="142" y="1357" fill="#2e7d32" font-size="12">Only retrieved transcript text is injected into the prompt.</text>
+<rect x="654" y="1264" width="348" height="122" rx="14" fill="#fffde7" stroke="#f9a825" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="1293" fill="#e65100" font-size="17" font-weight="900">LLM generates grounded answer</text>
+<text x="678" y="1317" fill="#f57f17" font-size="12">Model: GPT-4o-mini through LangChain ChatOpenAI.</text>
+<text x="678" y="1337" fill="#f57f17" font-size="12">Rule: answer from transcript context only.</text>
+<text x="678" y="1357" fill="#f57f17" font-size="12">If context is not enough, it refuses instead of hallucinating.</text>
+<line x1="466" y1="1325" x2="654" y2="1325" stroke="#f9a825" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
+
+<!-- Step 9 -->
+<line x1="560" y1="1386" x2="560" y2="1436" stroke="#263238" stroke-width="2.5" marker-end="url(#arrow)"/>
+<circle cx="560" cy="1468" r="22" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>
+<text x="560" y="1476" fill="#ffffff" font-size="20" font-weight="900" text-anchor="middle">9</text>
+<rect x="58" y="1430" width="408" height="122" rx="14" fill="#e0f2f1" stroke="#00897b" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="82" y="1459" fill="#00695c" font-size="17" font-weight="900">Answer returns to the UI</text>
+<text x="82" y="1483" fill="#00796b" font-size="12">Response includes answer, citations, tool_steps_used, and session_id.</text>
+<text x="82" y="1503" fill="#00796b" font-size="12">Frontend displays AI message in the workspace.</text>
+<text x="82" y="1523" fill="#00796b" font-size="12">User can continue with follow-up questions.</text>
+<rect x="654" y="1430" width="408" height="122" rx="14" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2.5" filter="url(#shadow)"/>
+<text x="678" y="1459" fill="#1b5e20" font-size="17" font-weight="900">User can verify the answer</text>
+<text x="678" y="1483" fill="#2e7d32" font-size="12">Timestamp chips link to the exact video moment.</text>
+<text x="678" y="1503" fill="#2e7d32" font-size="12">Transcript panel shows evidence and source text.</text>
+<text x="678" y="1523" fill="#2e7d32" font-size="12">Optional TTS can read the answer aloud.</text>
+<line x1="466" y1="1491" x2="654" y2="1491" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
+
+<!-- Final explanation band -->
+<rect x="42" y="1588" width="1036" height="92" rx="14" fill="#263238" filter="url(#shadow)"/>
+<text x="70" y="1620" fill="#ffffff" font-size="18" font-weight="900">One-sentence explanation</text>
+<text x="70" y="1646" fill="#eceff1" font-size="14">AskTube AI searches YouTube, extracts the selected video's transcript, chunks and embeds it into ChromaDB, retrieves the most relevant transcript parts for each question, and uses LangChain RAG to answer with timestamp citations.</text>
+<text x="70" y="1668" fill="#b0bec5" font-size="12">Key promise: it does not answer from general internet knowledge; it answers from the retrieved transcript evidence.</text>
+
+<!-- Side notes -->
+<rect x="42" y="122" width="1036" height="1" fill="#d7d0c4"/>
+<text x="42" y="1705" fill="#8d8d8d" font-size="11">Tip for presentation: start at step 1 and walk downward. EC2 proves Docker deployment; local demo is safest for full RAG if YouTube blocks cloud/proxy transcript access.</text>
+</svg>
+</div>
+</body>
+</html>

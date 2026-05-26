@@ -77,12 +77,13 @@ The platform feels like: Netflix + Perplexity AI + YouTube + futuristic AI assis
 
 ### Test Coverage
 
-82 pytest tests across:
+98 pytest tests across:
 - agent route + service (21 tests)
 - LangChain tools (21 tests)
 - WebSocket ingest stream (5 tests)
+- conversation memory service (12 tests)
 - RAG service utilities (4 tests)
-- chunking, transcript, vectorstore services (8 tests)
+- chunking, transcript, vectorstore, and YouTube services (13 tests)
 - route integration tests (8 tests)
 - evaluation metrics (4 tests)
 - speech transcription route - `test_speech_route.py` (11 tests): transcript return, whitespace stripping, hallucination filter, 1500-byte minimum, 503/502/422 errors, prompt parameter

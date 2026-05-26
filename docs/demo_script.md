@@ -2,6 +2,8 @@
 
 Presentation guide for the IronHack final project. Total time: ~8 minutes.
 
+For a tighter 7-minute talk, use `docs/AskTube_AI_7min_speaker_notes.md`.
+
 ---
 
 ## 1. Two-Minute Overview (say this first)
@@ -45,15 +47,25 @@ User question -> agent decides tools -> similarity search on ChromaDB -> top-5 c
 ## 3. Live Demo Steps
 
 ### Step 1 - Open the app
+For the full transcript/RAG demo, use local:
+
 `http://localhost:3000`
+
+For hosted deployment proof, show EC2:
+
+`http://<EC2_PUBLIC_IP>:3001`
+
+Backend health:
+
+`http://<EC2_PUBLIC_IP>:8000/health`
 
 Point out: cinematic dark UI, search bar, video carousel with demo cards.
 
 ### Step 2 - Search
-Type: **`python tutorial for beginners`**
+Type: **`python tutorial for beginners`** and select a duration filter such as **`< 10 min`**.
 Hit **Find videos**.
 
-Point out: real YouTube API results, channel names, durations, carousel navigation.
+Point out: real YouTube API results, channel names, durations, duration filtering, carousel navigation.
 
 ### Step 3 - Select a video
 Center the **Programming with Mosh** card. Click **Prepare down**.
@@ -84,7 +96,7 @@ cd backend
 python scripts/run_evaluation.py
 ```
 
-Point out: 17 eval cases across 6 categories - answerable questions, refusals, citation accuracy, summaries, hallucination prevention, and multi-turn memory. All run through `LangSmithEvaluationService`. Results: 5 PASS, 12 WARN, 0 FAIL (WARNs are the heuristic scorer being conservative about paraphrased answers - no behavioral failures). The backend also ships 82 pytest tests covering all routes, services, tools, and the new speech transcription endpoint.
+Point out: 17 eval cases across 6 categories - answerable questions, refusals, citation accuracy, summaries, hallucination prevention, and multi-turn memory. All run through `LangSmithEvaluationService`. Results: 5 PASS, 12 WARN, 0 FAIL (WARNs are the heuristic scorer being conservative about paraphrased answers - no behavioral failures). The backend also ships 98 pytest tests covering all routes, services, tools, and the new speech transcription endpoint.
 
 ---
 
@@ -98,7 +110,7 @@ Point out: 17 eval cases across 6 categories - answerable questions, refusals, c
 | **LangChain agent** | `AgentService` - manual tool-calling loop, up to 8 iterations, grounded answer preservation |
 | **YouTube data** | `YouTubeService` (Data API v3) + `TranscriptService` (youtube-transcript-api + Whisper fallback) |
 | **API** | FastAPI with 13 endpoints across search, transcripts, chunking, vectorstore, chat, agent, evaluations |
-| **Automated tests** | 82 pytest tests - tools, services, routes, WebSocket streams, evaluation metrics, speech transcription |
+| **Automated tests** | 98 pytest tests - tools, services, routes, WebSocket streams, evaluation metrics, speech transcription |
 | **Frontend** | Next.js 14 / React / TypeScript / Tailwind CSS |
 | **Evaluation** | `LangSmithEvaluationService` - groundedness, hallucination risk, citation quality, latency; 17-case eval dataset |
 
@@ -145,6 +157,7 @@ Full details: `docs/youtube_data_strategy.md`.
 | Agent does not stream | `POST /api/agent/chat` returns a full response; streaming uses the separate `/api/chat/stream` WebSocket |
 | No authentication | The demo has no login or rate limiting - fine for a school project, not for production |
 | Heuristic evaluator is conservative | Term-overlap groundedness scorer flags paraphrased answers as warnings; LLM evaluator mode would score correctly but costs extra API calls |
+| YouTube blocks many cloud IPs | EC2 proves Docker deployment, but full transcript ingestion may need local demo or a working residential HTTPS proxy endpoint |
 | Voice search requires closed Zoom on Windows | Zoom (and other conferencing apps) may claim exclusive mode on the microphone, causing MediaRecorder to capture 0-level audio. Fix: close Zoom, or disable exclusive mode in Windows Sound settings -> Properties -> Advanced |
 
 ---
@@ -158,7 +171,7 @@ Full details: `docs/youtube_data_strategy.md`.
 - Chapter-level transcript segmentation using YouTube chapter metadata
 - LangSmith evaluation dashboard with trend charts
 - LLM-based evaluator mode (`RAG_EVALUATOR_MODE=llm`)
-- Hosted deployment (Vercel + Railway / Fly.io)
+- Production polish: custom domain, HTTPS, and a more reliable transcript proxy provider
 
 ---
 
