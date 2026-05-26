@@ -72,7 +72,7 @@ The current hosted demo runs the three Docker services on a single EC2 instance:
 
 | Service | Public access |
 |---------|---------------|
-| Frontend | `http://<EC2_PUBLIC_IP>:3001` |
+| Frontend | `http://<EC2_PUBLIC_IP>:3000` |
 | Backend | `http://<EC2_PUBLIC_IP>:8000` |
 | ChromaDB | internal Docker service, optionally exposed on `8001` for debugging |
 
@@ -96,7 +96,7 @@ CORS_ORIGINS=http://<EC2_PUBLIC_IP>:3001,http://localhost:3000
 
 If port `3000` is already occupied, map the frontend as `3001:3000` in `docker-compose.yml` and open port `3001` in the EC2 security group.
 
-> Note: YouTube often blocks transcript extraction from AWS/cloud IPs. The project includes Webshare residential proxy support through `WEBSHARE_PROXY_URL`, `WEBSHARE_PROXY_USERNAME`, `WEBSHARE_PROXY_PASSWORD`, and `WEBSHARE_PROXY_LOCATIONS`, but the most reliable full RAG demo is still local unless the proxy endpoint supports HTTPS CONNECT to YouTube.
+> Note: YouTube blocks transcript extraction from AWS/cloud IPs. The project includes Webshare residential proxy support. Set `WEBSHARE_PROXY_URL=http://<user>:<pass>@p.webshare.io:80` in your `.env` to route transcript requests through the proxy. This is required for production EC2 deployments.
 
 ---
 
@@ -218,6 +218,7 @@ AskTube AI/
 |   |   |   +-- processing-screen.tsx
 |   |   |   +-- ai-workspace.tsx
 |   |   |   +-- ai-assistant-scene.tsx
+|   |   |   +-- about-section.tsx
 |   |   +-- floating-companion.tsx
 |   +-- lib/api.ts                # Backend API client
 |   +-- public/
