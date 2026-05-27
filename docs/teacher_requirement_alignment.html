@@ -294,13 +294,14 @@
       <h1>How closely does AskTube AI match Carlos's chatbot requirements?</h1>
       <p>
         AskTube AI strongly matches the final-project expectations: it is a YouTube-based AI chatbot with tools,
-        memory, transcript processing, ChromaDB vector storage, RAG answering, testing, evaluation, and Docker deployment.
+        memory, transcript processing, ChromaDB vector storage, RAG answering, testing, evaluation, observability,
+        and Docker deployment.
       </p>
       <div class="score">
         <div class="score-card">
           <strong>90-95% aligned</strong>
           The implementation goes beyond the minimum by using a production-style Next.js interface, WebSocket processing,
-          voice features, TTS, a 3D assistant scene, and a documented EC2 deployment.
+          voice features, TTS, a 3D assistant scene, analytics dashboard, Prometheus metrics, and a documented EC2 deployment.
         </div>
       </div>
     </section>
@@ -351,6 +352,11 @@
               <td>Testing and evaluation</td>
               <td>98 pytest tests, manual test requirements, RAG evaluation dataset, LangSmith-style evaluation service.</td>
               <td><span class="pill yes">Covered</span></td>
+            </tr>
+            <tr>
+              <td>Monitoring / observability</td>
+              <td>Built-in `/analytics` dashboard, SQLAlchemy analytics tables, FastAPI request middleware, Prometheus `/metrics`, and optional LangSmith tracing.</td>
+              <td><span class="pill extra">Beyond minimum</span></td>
             </tr>
             <tr>
               <td>Deployment</td>
@@ -433,6 +439,7 @@
           <li>Timestamp citations required.</li>
           <li>ChromaDB vector retrieval.</li>
           <li>Modern UI and strong UX polish.</li>
+          <li>Analytics dashboard for product, RAG, pipeline, UX, and business metrics.</li>
         </ul>
       </article>
 
@@ -451,7 +458,7 @@
         <h2>Final Verdict</h2>
         <p>
           AskTube AI does not only meet the minimum. It is technically above the expected level because it includes tools,
-          memory, RAG, vector storage, evaluation, deployment, voice input, TTS, and a polished product frontend.
+          memory, RAG, vector storage, evaluation, deployment, voice input, TTS, analytics, observability, and a polished product frontend.
         </p>
       </article>
 
@@ -459,7 +466,7 @@
         <h2>Short Explanation To Tell Carlos</h2>
         <div class="quote">
           My project matches the chatbot requirements closely. It has an LLM chatbot, LangChain tools, conversational memory,
-          ChromaDB vector storage, transcript text processing, testing, evaluation, and Docker deployment. For YouTube data,
+          ChromaDB vector storage, transcript text processing, testing, evaluation, analytics, observability, and Docker deployment. For YouTube data,
           I follow your recommendation: the primary flow uses youtube-transcript-api, not video download. yt-dlp and Whisper
           are only fallback options when captions are unavailable. I used Next.js instead of Gradio or Streamlit because I
           wanted a more production-like learning platform UI, but the required AI architecture is still implemented.

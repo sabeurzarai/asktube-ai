@@ -1,6 +1,14 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 export const WS_BASE = API_BASE.replace(/^http/, "ws");
 
+export function getApiBase() {
+  return API_BASE;
+}
+
+export function getWsBase() {
+  return WS_BASE;
+}
+
 export interface YouTubeVideo {
   video_id: string;
   title: string;
@@ -26,7 +34,7 @@ export async function searchVideos(
   maxResults = 10,
   durationFilter: VideoDurationFilter = "any"
 ): Promise<YouTubeSearchResponse> {
-  const url = new URL(`${API_BASE}/api/search`);
+  const url = new URL(`${getApiBase()}/api/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("max_results", String(maxResults));
   url.searchParams.set("duration_filter", durationFilter);
@@ -41,6 +49,67 @@ export async function searchVideos(
   return res.json() as Promise<YouTubeSearchResponse>;
 }
 
+// -- Analytics ----------------------------------------------------------------
+
+export interface AnalyticsEventPayload {
+  event_type: string;
+  session_id?: string | null;
+  user_id?: string | null;
+  page?: string | null;
+  duration_ms?: number | null;
+  metadata_json?: Record<string, unknown>;
+}
+
+export interface MetricPoint {
+  label: string;
+  value: number;
+}
+
+export interface AnalyticsDashboard {
+  generated_at: string;
+  overview: {
+    daily_active_users: number;
+    weekly_active_users: number;
+    questions_today: number;
+    videos_processed_today: number;
+    avg_session_time_ms: number;
+    avg_processing_time_ms: number;
+    voice_usage_rate: number;
+    search_success_rate: number;
+  };
+  ai_metrics: Record<string, MetricPoint[] | number>;
+  pipeline_metrics: Record<string, MetricPoint[] | number>;
+  ux_metrics: Record<string, number>;
+  business_metrics: Record<string, number | MetricPoint[]>;
+  recent_events: Array<{
+    event_type: string;
+    timestamp: string;
+    page?: string | null;
+    duration_ms?: number | null;
+    metadata_json: Record<string, unknown>;
+  }>;
+}
+
+export async function captureAnalyticsEvent(payload: AnalyticsEventPayload): Promise<void> {
+  await fetch(`${getApiBase()}/api/analytics/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+export async function getAnalyticsDashboard(): Promise<AnalyticsDashboard> {
+  const res = await fetch(`${getApiBase()}/api/analytics/dashboard`, { cache: "no-store" });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Analytics dashboard failed" }));
+    throw new Error(typeof error.detail === "string" ? error.detail : "Analytics dashboard failed");
+  }
+
+  return res.json() as Promise<AnalyticsDashboard>;
+}
+
 // -- Ingest --------------------------------------------------------------------
 
 export interface IngestResponse {
@@ -53,7 +122,7 @@ export interface IngestResponse {
 
 export async function ingestVideo(videoId: string): Promise<IngestResponse> {
   console.log(`[AskTube API] POST /api/videos/${videoId}/ingest`);
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/ingest`, {
+  const res = await fetch(`${getApiBase()}/api/videos/${videoId}/ingest`, {
     method: "POST",
   });
 
@@ -91,7 +160,7 @@ export async function chatWithVideo(
   videoId: string,
   sessionId?: string
 ): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/api/chat`, {
+  const res = await fetch(`${getApiBase()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -122,7 +191,7 @@ export async function agentChatWithVideo(
   videoId: string | null,
   sessionId?: string
 ): Promise<AgentChatResponse> {
-  const res = await fetch(`${API_BASE}/api/agent/chat`, {
+  const res = await fetch(`${getApiBase()}/api/agent/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -145,7 +214,7 @@ export async function agentChatWithVideo(
 export async function transcribeSpeech(audioBlob: Blob): Promise<string> {
   const form = new FormData();
   form.append("audio", audioBlob, "speech.webm");
-  const res = await fetch(`${API_BASE}/api/speech/transcribe`, {
+  const res = await fetch(`${getApiBase()}/api/speech/transcribe`, {
     method: "POST",
     body: form,
   });

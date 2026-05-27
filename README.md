@@ -9,9 +9,9 @@ AI-powered YouTube learning platform. Search for videos, extract transcripts, an
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, TypeScript, TailwindCSS, Framer Motion, Three.js |
-| Backend | FastAPI, Python 3.12, LangChain, ChromaDB |
+| Backend | FastAPI, Python 3.12, LangChain, ChromaDB, SQLAlchemy async |
 | AI | OpenAI GPT-4o-mini, text-embedding-3-small, Whisper |
-| Observability | LangSmith (optional tracing) |
+| Observability | AskTube analytics dashboard, Prometheus metrics, LangSmith tracing |
 | Data | YouTube Data API v3, youtube-transcript-api 1.2.4 |
 | Infra | Docker, Docker Compose, AWS EC2, optional Render |
 
@@ -74,6 +74,8 @@ The current hosted demo runs the three Docker services on a single EC2 instance:
 |---------|---------------|
 | Frontend | `http://<EC2_PUBLIC_IP>:3001` |
 | Backend | `http://<EC2_PUBLIC_IP>:8000` |
+| Analytics dashboard | `http://<EC2_PUBLIC_IP>:3001/analytics` |
+| Prometheus metrics | `http://<EC2_PUBLIC_IP>:8000/metrics` |
 | ChromaDB | internal Docker service, optionally exposed on `8001` for debugging |
 
 **Live demo:** http://18.157.233.122:3001/
@@ -194,6 +196,9 @@ Render runs each service as a separate Docker container. You need three services
 | `WHISPER_MODEL` | No | Default: `whisper-1` |
 | `LANGSMITH_TRACING` | No | `true` to enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | If tracing | LangSmith API key |
+| `ANALYTICS_ENABLED` | No | Enable product, RAG, pipeline, UX, and business analytics |
+| `ANALYTICS_DATABASE_URL` | No | Async SQLAlchemy URL for analytics storage; SQLite by default, PostgreSQL supported |
+| `PROMETHEUS_ENABLED` | No | Exposes Prometheus-compatible metrics at `/metrics` |
 
 ---
 
@@ -212,6 +217,7 @@ curl https://<backend>.onrender.com/health
 AskTube AI/
 +-- frontend/                     # Next.js 14 app
 |   +-- app/
+|   |   +-- analytics/            # Production analytics dashboard
 |   +-- components/
 |   |   +-- landing/              # Page sections
 |   |   |   +-- cinematic-hero.tsx
@@ -223,6 +229,7 @@ AskTube AI/
 |   |   |   +-- about-section.tsx
 |   |   +-- floating-companion.tsx
 |   +-- lib/api.ts                # Backend API client
+|   +-- lib/analytics.ts          # Frontend product/UX event tracking
 |   +-- public/
 |   |   +-- mic-test.html         # Microphone diagnostics page (/mic-test.html)
 |   +-- next.config.mjs
@@ -230,8 +237,9 @@ AskTube AI/
 |
 +-- backend/                      # FastAPI app
 |   +-- app/
+|   |   +-- analytics/            # SQLAlchemy models, service, middleware, Prometheus
 |   |   +-- api/routes/           # search, chat, transcripts, vectorstore,
-|   |   |                         #   agent, speech, evaluations, ingest
+|   |   |                         #   agent, speech, evaluations, ingest, analytics
 |   |   +-- services/             # youtube, transcript, chunking, RAG,
 |   |   |                         #   vectorstore, agent, memory, evaluation
 |   |   |   +-- agent_service.py  # LangChain tool-calling agent (bind_tools loop)
@@ -280,6 +288,9 @@ AskTube AI/
 | POST | `/api/speech/transcribe` | Transcribe audio via Whisper (voice search fallback) |
 | POST | `/api/evaluations/rag` | Run RAG quality evaluation |
 | POST | `/api/evaluations/conversation` | Run conversation quality evaluation |
+| POST | `/api/analytics/events` | Capture frontend product/UX analytics events |
+| GET | `/api/analytics/dashboard` | Return dashboard aggregates |
+| GET | `/metrics` or `/api/metrics` | Prometheus metrics for HTTP, RAG, embeddings, vector search, processing, WebSockets |
 
 ---
 
@@ -315,11 +326,18 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 - **Inline heuristic evaluation**: `RAG_EVALUATOR_MODE=heuristic` scores each RAG response at inference time (source coverage, answer length, hallucination-risk flag) and includes scores in the API response.
 - **LangSmith tracing** (optional, `LANGSMITH_TRACING=true`) captures full chain traces for offline evaluation.
 
+### Analytics and Observability
+AskTube AI includes a production-style analytics system. The frontend tracks product and UX events such as search submissions, video selections, carousel movement, voice search, processing state, chat messages, prompt clicks, transcript opens, timestamp clicks, and 3D assistant interactions. The backend records HTTP latency, search events, video processing metrics, embedding/vector timings, RAG latency, citation coverage, tool execution, chat metrics, and WebSocket failures.
+
+Analytics are stored in SQLAlchemy tables (`analytics_events`, `video_metrics`, `chat_metrics`, `rag_metrics`) and displayed in the Next.js dashboard at `/analytics`. Prometheus-format operational metrics are exposed at `/metrics`. LangSmith remains available for chain and tool tracing. See [Analytics and Observability](docs/analytics_observability.md).
+
 ### Deployment
 The project ships three Docker containers orchestrated via Docker Compose:
 1. `chromadb` - ChromaDB vector store with a persistent disk volume
 2. `backend` - FastAPI + LangChain application
 3. `frontend` - Next.js production build
+
+Analytics persistence defaults to SQLite in the backend data volume for local and EC2 simplicity. Production deployments can switch to PostgreSQL by setting `ANALYTICS_DATABASE_URL=postgresql+asyncpg://...`.
 
 The project is deployed with Docker Compose on **AWS EC2** for the hosted demo and remains Render-compatible through the service-level Dockerfiles.
 

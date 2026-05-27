@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -8,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
 from app.core.config import Settings, settings
+from app.analytics.service import get_analytics_service
 from app.schemas.agent import AgentChatResponse
 from app.schemas.rag import TimestampCitation
 from app.services.chunking_service import get_chunking_service
@@ -66,6 +68,7 @@ class AgentService:
         video_id: str | None,
         session_id: str | None,
     ) -> AgentChatResponse:
+        agent_started_at = time.perf_counter()
         if not self.config.openai_api_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -110,15 +113,31 @@ class AgentService:
                 tool_call_id: str = tool_call["id"]
 
                 tool = self._tool_map.get(tool_name)
+                tool_started_at = time.perf_counter()
+                tool_failed = False
                 if tool is None:
                     tool_result: Any = {"error": f"Unknown tool: {tool_name}"}
+                    tool_failed = True
                 else:
                     try:
                         tool_result = await tool.ainvoke(tool_args)
                     except Exception as exc:  # noqa: BLE001
                         tool_result = {"error": str(exc)}
+                        tool_failed = True
 
                 tool_steps_used.append(tool_name)
+                get_analytics_service().safe_track_background(
+                    get_analytics_service().track_event_safe(
+                        "langchain_tool_executed",
+                        session_id=active_session_id,
+                        duration_ms=(time.perf_counter() - tool_started_at) * 1000,
+                        metadata_json={
+                            "tool_name": tool_name,
+                            "success": not tool_failed,
+                            "agent": "AskTube Agent",
+                        },
+                    )
+                )
 
                 if tool_name == "answer_question" and isinstance(tool_result, dict):
                     answer_question_called = True
@@ -145,6 +164,19 @@ class AgentService:
         # only append here when the agent answered without that tool.
         if not answer_question_called:
             self.memory.append_exchange(active_session_id, message, answer)
+
+        get_analytics_service().safe_track_background(
+            get_analytics_service().track_event_safe(
+                "agent_execution_completed",
+                session_id=active_session_id,
+                duration_ms=(time.perf_counter() - agent_started_at) * 1000,
+                metadata_json={
+                    "tool_steps_used": tool_steps_used,
+                    "tool_count": len(tool_steps_used),
+                    "success": bool(answer),
+                },
+            )
+        )
 
         return AgentChatResponse(
             session_id=active_session_id,

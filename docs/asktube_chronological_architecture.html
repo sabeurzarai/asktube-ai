@@ -37,7 +37,7 @@
 <div class="wrap">
 <svg width="1120" height="1720" viewBox="0 0 1120 1720" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" role="img" aria-labelledby="title desc">
 <title id="title">AskTube AI Chronological Process Architecture</title>
-<desc id="desc">A top-to-bottom explanation of how AskTube AI works chronologically, from user search and YouTube API calls through transcript extraction, chunking, vector storage, RAG retrieval, LangChain agent orchestration, and final timestamped answers.</desc>
+<desc id="desc">A top-to-bottom explanation of how AskTube AI works chronologically, from user search and YouTube API calls through transcript extraction, chunking, vector storage, RAG retrieval, LangChain agent orchestration, analytics capture, and final timestamped answers.</desc>
 
 <defs>
   <marker id="arrow" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
@@ -76,7 +76,7 @@
 
 <rect x="545" y="24" width="535" height="58" rx="10" fill="#263238"/>
 <text x="812" y="48" fill="#ffffff" font-size="14" font-weight="800" text-anchor="middle">HOW TO EXPLAIN IT TO THE TEACHER</text>
-<text x="812" y="69" fill="#cfd8dc" font-size="12" text-anchor="middle">User -> Frontend -> FastAPI -> YouTube/Transcript -> ChromaDB -> LangChain RAG -> Answer</text>
+<text x="812" y="69" fill="#cfd8dc" font-size="12" text-anchor="middle">User -> Frontend -> FastAPI -> YouTube/Transcript -> ChromaDB -> LangChain RAG -> Answer + Analytics</text>
 
 <!-- Column labels -->
 <text x="86" y="144" fill="#1a237e" font-size="13" font-weight="900" letter-spacing="1.3">USER / UI</text>
@@ -102,7 +102,7 @@
 <text x="678" y="205" fill="#0d47a1" font-size="17" font-weight="900">Frontend calls FastAPI search</text>
 <text x="678" y="229" fill="#1565c0" font-size="12">GET /api/search?q=...&duration_filter=...</text>
 <text x="678" y="249" fill="#1565c0" font-size="12">Search state shows loading, empty, ready, or error.</text>
-<text x="678" y="269" fill="#1565c0" font-size="12">This creates the first bridge from UI to backend.</text>
+<text x="678" y="269" fill="#1565c0" font-size="12">The frontend also emits search_submitted analytics.</text>
 <line x1="466" y1="232" x2="654" y2="232" stroke="#1565c0" stroke-width="2.5" marker-end="url(#arrowBlue)"/>
 
 <!-- Step 2 -->
@@ -196,7 +196,7 @@
 <text x="678" y="1137" fill="#880e4f" font-size="17" font-weight="900">LangChain agent decides the tools</text>
 <text x="678" y="1161" fill="#ad1457" font-size="12">Tools: search, ingest, retrieve_context, answer_question.</text>
 <text x="678" y="1181" fill="#ad1457" font-size="12">If video is already ingested, it skips ingestion.</text>
-<text x="678" y="1201" fill="#ad1457" font-size="12">Tool steps are returned for debugging and demonstration.</text>
+<text x="678" y="1201" fill="#ad1457" font-size="12">Tool steps and tool latency are tracked for observability.</text>
 <line x1="466" y1="1164" x2="654" y2="1164" stroke="#c2185b" stroke-width="2.5" marker-end="url(#arrowPink)"/>
 
 <!-- Step 8 -->
@@ -212,7 +212,7 @@
 <text x="678" y="1293" fill="#e65100" font-size="17" font-weight="900">LLM generates grounded answer</text>
 <text x="678" y="1317" fill="#f57f17" font-size="12">Model: GPT-4o-mini through LangChain ChatOpenAI.</text>
 <text x="678" y="1337" fill="#f57f17" font-size="12">Rule: answer from transcript context only.</text>
-<text x="678" y="1357" fill="#f57f17" font-size="12">If context is not enough, it refuses instead of hallucinating.</text>
+<text x="678" y="1357" fill="#f57f17" font-size="12">RAG latency, chunks, tokens, and citation coverage are recorded.</text>
 <line x1="466" y1="1325" x2="654" y2="1325" stroke="#f9a825" stroke-width="2.5" marker-end="url(#arrowOrange)"/>
 
 <!-- Step 9 -->
@@ -223,19 +223,19 @@
 <text x="82" y="1459" fill="#00695c" font-size="17" font-weight="900">Answer returns to the UI</text>
 <text x="82" y="1483" fill="#00796b" font-size="12">Response includes answer, citations, tool_steps_used, and session_id.</text>
 <text x="82" y="1503" fill="#00796b" font-size="12">Frontend displays AI message in the workspace.</text>
-<text x="82" y="1523" fill="#00796b" font-size="12">User can continue with follow-up questions.</text>
+<text x="82" y="1523" fill="#00796b" font-size="12">Chat events update the /analytics dashboard.</text>
 <rect x="654" y="1430" width="408" height="122" rx="14" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2.5" filter="url(#shadow)"/>
 <text x="678" y="1459" fill="#1b5e20" font-size="17" font-weight="900">User can verify the answer</text>
 <text x="678" y="1483" fill="#2e7d32" font-size="12">Timestamp chips link to the exact video moment.</text>
 <text x="678" y="1503" fill="#2e7d32" font-size="12">Transcript panel shows evidence and source text.</text>
-<text x="678" y="1523" fill="#2e7d32" font-size="12">Optional TTS can read the answer aloud.</text>
+<text x="678" y="1523" fill="#2e7d32" font-size="12">Timestamp clicks and TTS usage are tracked as UX signals.</text>
 <line x1="466" y1="1491" x2="654" y2="1491" stroke="#2e7d32" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
 
 <!-- Final explanation band -->
 <rect x="42" y="1588" width="1036" height="92" rx="14" fill="#263238" filter="url(#shadow)"/>
 <text x="70" y="1620" fill="#ffffff" font-size="18" font-weight="900">One-sentence explanation</text>
-<text x="70" y="1646" fill="#eceff1" font-size="14">AskTube AI searches YouTube, extracts the selected video's transcript, chunks and embeds it into ChromaDB, retrieves the most relevant transcript parts for each question, and uses LangChain RAG to answer with timestamp citations.</text>
-<text x="70" y="1668" fill="#b0bec5" font-size="12">Key promise: it does not answer from general internet knowledge; it answers from the retrieved transcript evidence.</text>
+<text x="70" y="1646" fill="#eceff1" font-size="14">AskTube AI searches YouTube, extracts the selected video's transcript, chunks and embeds it into ChromaDB, retrieves relevant transcript parts, answers with citations, and records analytics for the full journey.</text>
+<text x="70" y="1668" fill="#b0bec5" font-size="12">Key promise: it does not answer from general internet knowledge; it answers from retrieved transcript evidence and exposes /analytics plus /metrics for observability.</text>
 
 <!-- Side notes -->
 <rect x="42" y="122" width="1036" height="1" fill="#d7d0c4"/>

@@ -1,7 +1,8 @@
 # AskTube AI — AWS EC2 Deployment Guide
 
-This guide deploys the full stack (Next.js frontend, FastAPI backend, ChromaDB) on a
-single EC2 instance behind an Nginx reverse proxy, with optional HTTPS via Certbot.
+This guide deploys the full stack (Next.js frontend, FastAPI backend, ChromaDB, and
+AskTube analytics/observability) on a single EC2 instance behind an Nginx reverse
+proxy, with optional HTTPS via Certbot.
 
 ---
 
@@ -114,6 +115,11 @@ EMBEDDING_MODEL=text-embedding-3-small
 # Optional — LangSmith tracing
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=
+
+# Analytics and observability
+ANALYTICS_ENABLED=true
+PROMETHEUS_ENABLED=true
+ANALYTICS_DATABASE_URL=sqlite+aiosqlite:///./data/analytics.db
 ```
 
 > **Never commit `.env` to git.** It is already in `.gitignore`.
@@ -131,6 +137,8 @@ docker compose up -d --build
 Services will be reachable at:
 - Frontend: `http://<EC2_PUBLIC_IP>:3000` or `http://<EC2_PUBLIC_IP>:3001` if port 3000 is already occupied
 - Backend: `http://<EC2_PUBLIC_IP>:8000`
+- Analytics dashboard: `http://<EC2_PUBLIC_IP>:3000/analytics` or `http://<EC2_PUBLIC_IP>:3001/analytics`
+- Prometheus metrics: `http://<EC2_PUBLIC_IP>:8000/metrics`
 
 > You will need to temporarily open ports 3000 or 3001 and 8000 in the security group for this.
 
@@ -151,6 +159,7 @@ The Nginx config is at `nginx/asktube.conf`. It proxies:
 | Path | Target |
 |---|---|
 | `/api/*` | FastAPI backend (port 8000) |
+| `/api/metrics` | FastAPI Prometheus metrics (port 8000) |
 | `/*` | Next.js frontend (port 3000) |
 
 WebSocket upgrades (`/api/chat/stream`, `/api/videos/*/ingest/stream`) are handled automatically via the `Upgrade` / `Connection` headers.
@@ -416,7 +425,44 @@ docker compose logs --tail=100 backend
 
 ---
 
-## 11. Troubleshooting
+## 11. Analytics and Observability
+
+The deployed app exposes two observability surfaces:
+
+| Surface | URL |
+|---|---|
+| Analytics dashboard | `http://<EC2_PUBLIC_IP>:3001/analytics` or `https://yourdomain.com/analytics` |
+| Prometheus metrics | Direct backend: `http://<EC2_PUBLIC_IP>:8000/metrics`; Nginx: `https://yourdomain.com/api/metrics` |
+
+The dashboard stores product, RAG, pipeline, UX, and business metrics in the analytics database.
+Local and EC2 Docker deployments default to SQLite in the backend data volume:
+
+```dotenv
+ANALYTICS_DATABASE_URL=sqlite+aiosqlite:///./data/analytics.db
+```
+
+For a longer-running production deployment, use PostgreSQL:
+
+```dotenv
+ANALYTICS_DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/asktube_analytics
+```
+
+After changing analytics storage, restart the backend:
+
+```bash
+docker compose restart backend
+```
+
+Quick checks:
+
+```bash
+curl http://localhost:8000/api/analytics/dashboard
+curl http://localhost:8000/metrics
+```
+
+---
+
+## 12. Troubleshooting
 
 ### Backend returns 503 "YOUTUBE_API_KEY is not configured"
 The `.env` file is missing or the key is blank. Check:
@@ -425,12 +471,18 @@ docker compose exec backend env | grep YOUTUBE
 ```
 
 ### Frontend shows a blank page or loads at the bottom
-- Confirm `NEXT_PUBLIC_API_URL` in `.env` matches the URL your browser uses.
-- This value is baked into the Next.js bundle at build time — you must rebuild
-  the frontend image after changing it:
+- Confirm the backend is reachable from the browser: `http://<EC2_PUBLIC_IP>:8000/health`.
+- The frontend has a runtime fallback that replaces a baked `localhost` API URL with the current public host, but production should still set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` correctly.
+- If you change frontend build-time variables, rebuild the frontend image:
   ```bash
   docker compose up -d --build frontend
   ```
+
+### Analytics dashboard is empty
+- Use the main app first: search, select a video, process, ask a question, and click a citation.
+- Check the backend endpoint: `curl http://localhost:8000/api/analytics/dashboard`
+- Confirm analytics is enabled: `docker compose exec backend env | grep ANALYTICS`
+- Check backend logs for database startup warnings: `docker compose logs --tail=100 backend`
 
 ### ChromaDB connection refused
 The backend connects to ChromaDB by service name. Verify:
@@ -482,3 +534,5 @@ The directory name must exactly match the domain in your Nginx config.
 | Check container health | `docker compose ps` |
 | Open a shell | `docker compose exec backend bash` |
 | Check env vars | `docker compose exec backend env` |
+| Check analytics | `curl http://localhost:8000/api/analytics/dashboard` |
+| Check Prometheus metrics | `curl http://localhost:8000/metrics` |

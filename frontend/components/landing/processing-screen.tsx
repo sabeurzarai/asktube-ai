@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, CheckCircle2, MessageSquareText } from "lucide-react";
 
-import { decodeHtml, ingestVideo, WS_BASE, type YouTubeVideo } from "@/lib/api";
+import { decodeHtml, getWsBase, ingestVideo, type YouTubeVideo } from "@/lib/api";
+import { elapsedAnalyticsMs, markAnalyticsStart, trackAnalyticsEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ShimmerBlock } from "@/components/ui/feedback-states";
@@ -33,6 +34,7 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
   const [error, setError] = useState<string | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
   const completedRef = useRef(false);
+  const processingStartRef = useRef(0);
 
   // Reset state whenever a new video is selected
   useEffect(() => {
@@ -48,6 +50,7 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
     if (!selectedVideo || hasStarted) return;
     setHasStarted(true);
     setError(null);
+    processingStartRef.current = markAnalyticsStart();
     onStart?.();
 
     const videoId = selectedVideo.video_id;
@@ -68,12 +71,22 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
             completedRef.current = true;
             setProgress(100);
             setIsComplete(true);
+            trackAnalyticsEvent(
+              "processing_completed",
+              { video_id: videoId, transport: "rest" },
+              elapsedAnalyticsMs(processingStartRef.current)
+            );
             onComplete?.();
           }
         })
         .catch((err: unknown) => {
           window.clearInterval(ticker);
           setError(err instanceof Error ? err.message : "Processing failed");
+          trackAnalyticsEvent(
+            "processing_failed",
+            { video_id: videoId, transport: "rest" },
+            elapsedAnalyticsMs(processingStartRef.current)
+          );
         });
 
       return () => window.clearInterval(ticker);
@@ -86,7 +99,7 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(`${WS_BASE}/api/videos/${videoId}/ingest/stream`);
+      ws = new WebSocket(`${getWsBase()}/api/videos/${videoId}/ingest/stream`);
     } catch {
       return startRestFallback();
     }
@@ -114,9 +127,19 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
         if (data.type === "ready" && !completedRef.current) {
           completedRef.current = true;
           setIsComplete(true);
+          trackAnalyticsEvent(
+            "processing_completed",
+            { video_id: videoId, transport: "websocket", chunk_count: data.chunk_count },
+            elapsedAnalyticsMs(processingStartRef.current)
+          );
           onComplete?.();
         } else if (data.type === "error") {
           setError(data.error ?? "Processing failed");
+          trackAnalyticsEvent(
+            "processing_failed",
+            { video_id: videoId, transport: "websocket", error: data.error },
+            elapsedAnalyticsMs(processingStartRef.current)
+          );
         }
       } catch {
         // ignore malformed events
@@ -132,6 +155,7 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
     ws.onclose = (e: CloseEvent) => {
       if (!e.wasClean && !completedRef.current && wsConnected) {
         setError("Connection lost during processing. Please retry.");
+        trackAnalyticsEvent("processing_failed", { video_id: videoId, transport: "websocket", error: "closed" });
       }
     };
 
@@ -230,6 +254,7 @@ export function ProcessingScreen({ selectedVideo, onStart, onComplete }: Process
                 <button
                   type="button"
                   onClick={() => {
+                    trackAnalyticsEvent("processing_retry_clicked", { video_id: selectedVideo?.video_id });
                     setHasStarted(false);
                     setError(null);
                     setProgress(0);

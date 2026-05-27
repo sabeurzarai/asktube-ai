@@ -1,9 +1,11 @@
 import re
+import time
 from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
 
+from app.analytics.service import get_analytics_service
 from app.core.config import Settings, settings
 from app.schemas.search import YouTubeSearchResponse, YouTubeThumbnail, YouTubeVideo
 
@@ -27,6 +29,7 @@ class YouTubeService:
         max_results: int = 10,
         duration_filter: DurationFilter = "any",
     ) -> YouTubeSearchResponse:
+        started_at = time.perf_counter()
         if not self.config.youtube_api_key:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -54,7 +57,20 @@ class YouTubeService:
             if duration_matches_filter(video.duration_seconds, duration_filter)
         ][:max_results]
 
-        return YouTubeSearchResponse(query=query, count=len(videos), videos=videos)
+        response = YouTubeSearchResponse(query=query, count=len(videos), videos=videos)
+        get_analytics_service().safe_track_background(
+            get_analytics_service().track_event_safe(
+                "search_completed",
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+                metadata_json={
+                    "query": query,
+                    "result_count": len(videos),
+                    "duration_filter": duration_filter,
+                    "success": True,
+                },
+            )
+        )
+        return response
 
     async def _request_search(self, query: str, max_results: int) -> list[dict[str, Any]]:
         params = {

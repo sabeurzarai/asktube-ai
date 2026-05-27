@@ -2,6 +2,14 @@
 
 AskTube AI uses LangSmith for tracing live RAG and agent calls, and for evaluating transcript-grounded chat behavior.
 
+This sits beside the built-in AskTube analytics layer:
+
+- LangSmith traces individual chains, tools, prompts, retrieved context, and failures.
+- `/analytics` shows product, RAG, pipeline, UX, and business metrics over time.
+- `/metrics` exposes Prometheus-format operational metrics for scraping.
+
+For the full analytics dashboard details, see `docs/analytics_observability.md`.
+
 ---
 
 ## What Gets Traced
@@ -123,6 +131,21 @@ Content-Type: application/json
 ```
 
 The response reports average latency, average groundedness, and failed turn indices.
+
+---
+
+## AskTube Dashboard vs LangSmith
+
+| Question | Best tool |
+|---|---|
+| Which tool did the agent call for this one answer? | LangSmith trace |
+| Which transcript chunks went into this one prompt? | LangSmith trace |
+| How many users searched or chatted today? | AskTube `/analytics` dashboard |
+| Is RAG latency improving or getting worse? | AskTube `/analytics` dashboard and `/metrics` |
+| Are WebSocket ingestion failures happening? | Prometheus `/metrics` and backend logs |
+| Why did one answer fail? | LangSmith trace + evaluation endpoint |
+
+The two systems are complementary: LangSmith is deep inspection for AI calls, while AskTube analytics is the product/platform overview.
 
 ---
 

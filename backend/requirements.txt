@@ -12,3 +12,8 @@ uvicorn[standard]==0.34.0
 youtube-transcript-api==1.2.4
 yt-dlp==2025.1.15
 python-multipart==0.0.20
+sqlalchemy==2.0.36
+asyncpg==0.30.0
+aiosqlite==0.20.0
+prometheus-client==0.21.1
+pytest-asyncio==0.24.0

@@ -70,6 +70,13 @@ class Settings(BaseSettings):
         default="heuristic",
         alias="RAG_EVALUATOR_MODE",
     )
+    analytics_database_url: str = Field(
+        default="sqlite+aiosqlite:///./data/analytics.db",
+        alias="ANALYTICS_DATABASE_URL",
+        description="Async SQLAlchemy URL for analytics storage. Use PostgreSQL in production.",
+    )
+    analytics_enabled: bool = Field(default=True, alias="ANALYTICS_ENABLED")
+    prometheus_enabled: bool = Field(default=True, alias="PROMETHEUS_ENABLED")
     langchain_tracing_v2: bool | None = Field(default=None, alias="LANGCHAIN_TRACING_V2")
     langchain_project: str | None = Field(default=None, alias="LANGCHAIN_PROJECT")
     cors_origins: list[str] = Field(
@@ -84,6 +91,17 @@ class Settings(BaseSettings):
         extra="ignore",
         populate_by_name=True,
     )
+
+    def __init__(self, **data):
+        # pydantic-settings gives aliases priority for environment-backed fields.
+        # Tests and dependency overrides use Pythonic snake_case names, so map
+        # explicit field-name overrides to their env aliases before settings
+        # sources are resolved.
+        for field_name, field_info in self.__class__.model_fields.items():
+            alias = field_info.alias
+            if alias and field_name in data and alias not in data:
+                data[alias] = data.pop(field_name)
+        super().__init__(**data)
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -195,8 +195,8 @@ def slide_cover(prs):
     add_text(slide, "RAG", 8.35, 2.9, 3.7, 0.45, size=25, color=INK, bold=True, caps=True, spacing=2.5)
     add_text(slide, "CITATIONS", 8.35, 3.72, 3.7, 0.35, size=16, color=GREEN, bold=True, caps=True, spacing=2.5)
     add_line(slide, 8.35, 4.45, 11.8, 4.45, PINK, 2)
-    add_text(slide, "Netflix-inspired UI + FastAPI + LangChain + ChromaDB + EC2", 8.35, 4.72, 3.55, 0.5, size=13, color=MUTED)
-    add_notes(slide, "~20 seconds\n\nHi, I'm Sabeur. AskTube AI is an AI platform that lets you chat with any YouTube video using its transcript. It is not a generic chatbot — every answer is grounded in the video, with timestamp citations so you can verify exactly where the information comes from.")
+    add_text(slide, "Netflix-inspired UI + FastAPI + LangChain + ChromaDB + analytics + EC2", 8.35, 4.72, 3.55, 0.5, size=13, color=MUTED)
+    add_notes(slide, "~20 seconds\n\nHi, I'm Sabeur. AskTube AI is an AI platform that lets you chat with any YouTube video using its transcript. It is not a generic chatbot — every answer is grounded in the video, with timestamp citations so you can verify exactly where the information comes from. I also added production-style analytics so the product and RAG pipeline are measurable.")
 
 
 def slide_problem_solution(prs):
@@ -233,12 +233,12 @@ def slide_architecture(prs):
     add_bg(slide, "03 / Architecture")
     add_text(slide, "Three layers, one learning loop", 0.65, 0.98, 7.4, 0.6, size=34, color=INK, bold=True)
     add_card(slide, "Frontend", "Next.js 14, TypeScript, TailwindCSS, shadcn/ui, Framer Motion, Embla, Three.js, React Three Fiber.", 0.75, 2.05, 3.45, 2.25, CYAN)
-    add_card(slide, "Backend API", "FastAPI async routes for search, transcripts, chunks, vectorstore, chat, agent, speech, and evaluations.", 4.95, 2.05, 3.45, 2.25, PINK)
-    add_card(slide, "AI + Data", "LangChain tools and agent, OpenAI models, ChromaDB vector storage, LangSmith tracing, Whisper fallback.", 9.15, 2.05, 3.45, 2.25, GREEN)
+    add_card(slide, "Backend API", "FastAPI async routes for search, transcripts, chunks, vectorstore, chat, agent, speech, evaluations, and analytics.", 4.95, 2.05, 3.45, 2.25, PINK)
+    add_card(slide, "AI + Data", "LangChain tools and agent, OpenAI models, ChromaDB vector storage, analytics DB, LangSmith tracing, Whisper fallback.", 9.15, 2.05, 3.45, 2.25, GREEN)
     add_line(slide, 4.2, 3.15, 4.9, 3.15, CYAN, 2)
     add_line(slide, 8.4, 3.15, 9.1, 3.15, PINK, 2)
-    add_text(slide, "Docker Compose runs frontend, backend, and ChromaDB together for local development and deployment testing.", 1.0, 5.35, 10.8, 0.45, size=17, color=MUTED)
-    add_notes(slide, "~40 seconds\n\nThree layers. Frontend: Next.js 14, TypeScript, TailwindCSS, Framer Motion, and Three.js for the 3D robot. Backend: FastAPI with async routes for search, transcripts, chunking, vector storage, chat, agent, and speech. AI layer: LangChain tools, OpenAI GPT-4o-mini for chat and text-embedding-3-small for vectors, ChromaDB as the vector store, and Whisper as a fallback for videos without captions.\n\nEverything ships as three Docker containers orchestrated by Docker Compose and deployed on AWS EC2.")
+    add_text(slide, "Docker Compose runs frontend, backend, ChromaDB, and analytics storage together for local development and deployment testing.", 1.0, 5.35, 10.8, 0.45, size=17, color=MUTED)
+    add_notes(slide, "~40 seconds\n\nThree layers. Frontend: Next.js 14, TypeScript, TailwindCSS, Framer Motion, and Three.js for the 3D robot. Backend: FastAPI with async routes for search, transcripts, chunking, vector storage, chat, agent, speech, and analytics. AI layer: LangChain tools, OpenAI GPT-4o-mini for chat and text-embedding-3-small for vectors, ChromaDB as the vector store, and Whisper as a fallback for videos without captions.\n\nThere is also an observability layer: analytics tables, a dashboard, Prometheus metrics, and optional LangSmith tracing.")
 
 
 def slide_ingestion(prs):
@@ -311,9 +311,26 @@ def slide_voice_ux(prs):
     add_notes(slide, "~30 seconds\n\nThe UI is designed to feel like a real product. Voice search tries the browser Web Speech API first, and automatically falls back to MediaRecorder plus Whisper if it fails. The 3D robot moves through the journey stages and speaks short guidance at each step. Accessibility is built in: semantic labels, visible focus states, reduced-motion support, and screen-reader status messages.")
 
 
+def slide_analytics(prs):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(slide, "08 / Analytics + Observability")
+    add_text(slide, "The platform is measurable, not just usable.", 0.65, 0.98, 8.4, 0.6, size=33, color=INK, bold=True)
+    add_text(slide, "AskTube tracks product usage, RAG quality, pipeline performance, UX behaviour, and operational health.", 0.72, 1.75, 10.6, 0.36, size=16, color=MUTED)
+    add_card(slide, "Product + UX", "search_submitted, video_selected, voice_search_completed, suggested_prompt_clicked, timestamp_clicked, 3d_chatbot_interacted.", 0.75, 2.35, 3.55, 1.85, CYAN)
+    add_card(slide, "AI / RAG", "retrieval latency, generation latency, chunks retrieved, token estimates, citation coverage, hallucination warnings.", 4.55, 2.35, 3.55, 1.85, PINK)
+    add_card(slide, "Pipeline", "transcript time, embedding duration, vector insert/query timing, chunk count, processing duration, Whisper fallback usage.", 8.35, 2.35, 3.55, 1.85, AMBER)
+    add_shape(slide, 0.85, 4.85, 5.25, 0.85, CARD, transparency=0, line_color=GREEN)
+    add_text(slide, "/analytics", 1.1, 5.04, 1.75, 0.28, size=19, color=GREEN, bold=True)
+    add_text(slide, "Next.js dashboard with overview, AI, pipeline, UX, business metrics, and recent events.", 2.9, 5.05, 3.0, 0.28, size=12, color=INK)
+    add_shape(slide, 6.55, 4.85, 5.25, 0.85, CARD, transparency=0, line_color=CYAN)
+    add_text(slide, "/metrics", 6.8, 5.04, 1.75, 0.28, size=19, color=CYAN, bold=True)
+    add_text(slide, "Prometheus metrics for HTTP latency, RAG, embeddings, vector search, processing, and WebSockets.", 8.6, 5.05, 3.0, 0.28, size=12, color=INK)
+    add_notes(slide, "~35 seconds\n\nI added analytics so the app can be observed like a production AI product. The frontend records product and UX events such as searches, selected videos, voice search, prompt clicks, and timestamp clicks. The backend records RAG latency, retrieved chunks, citation coverage, transcript time, embedding time, vector query time, and WebSocket failures.\n\nThere are two views: the /analytics dashboard for product and AI observability, and /metrics for Prometheus-style operational metrics. LangSmith is still available for deep chain traces.")
+
+
 def slide_evaluation(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    add_bg(slide, "08 / Testing + Evaluation")
+    add_bg(slide, "09 / Testing + Evaluation")
     add_text(slide, "The project is testable, explainable, and demo-ready.", 0.65, 0.98, 8.8, 0.6, size=33, color=INK, bold=True)
     add_metric(slide, "98", "pytest tests", 0.9, 2.15, 2.0, CYAN)
     add_metric(slide, "17", "RAG eval cases", 3.35, 2.15, 2.2, PINK)
@@ -338,7 +355,7 @@ def slide_evaluation(prs):
 
 def slide_demo(prs):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    add_bg(slide, "09 / Live Demo")
+    add_bg(slide, "10 / Live Demo")
     add_text(slide, "Demo path: search, prepare, ask, verify.", 0.65, 0.98, 8.8, 0.6, size=33, color=INK, bold=True)
     add_bullets(
         slide,
@@ -351,6 +368,7 @@ def slide_demo(prs):
             "Ask a follow-up to demonstrate memory.",
             "Ask an unrelated question to show refusal behavior.",
             "Use mic input and Read aloud if time allows.",
+            "Show /analytics and /metrics if time allows.",
             "Show EC2 health endpoint and explain the YouTube cloud-IP transcript limitation."
         ],
         0.95,
@@ -362,7 +380,7 @@ def slide_demo(prs):
     )
     add_shape(slide, 8.05, 2.05, 3.9, 3.75, CARD, transparency=0, line_color=PINK)
     add_text(slide, "What to emphasize", 8.38, 2.38, 3.2, 0.35, size=14, color=PINK, bold=True, caps=True, spacing=1.5)
-    add_text(slide, "This is not a generic chatbot. It is a transcript-grounded learning workflow with tools, memory, vector search, citations, and a polished UI.", 8.38, 3.0, 3.1, 1.45, size=18, color=INK)
+    add_text(slide, "This is not a generic chatbot. It is a transcript-grounded learning workflow with tools, memory, vector search, citations, analytics, and a polished UI.", 8.38, 3.0, 3.1, 1.45, size=18, color=INK)
     add_text(slide, "Keep the demo focused on trust: every answer links back to the video. EC2 proves deployment; local run proves full transcript access when YouTube blocks cloud IPs.", 8.38, 4.65, 3.1, 0.9, size=11, color=MUTED)
     add_notes(slide, "~90 seconds\n\nLet me show you the live app. Open http://18.157.233.122:3001/ — this is running on AWS EC2 with a Webshare residential proxy to bypass YouTube's cloud IP restrictions.\n\n[Search] I'll type 'python tutorial for beginners' and apply a duration filter. [Results appear] Pick a video and click Prepare. [Watch the progress steps: metadata, transcript, chunking, embeddings, storage.]\n\n[Chat] Now I ask: 'What is Python used for?' — [Answer appears with timestamp chips] See the citations — each one links to the exact moment in the video. [Click a timestamp]\n\n[Follow-up] Now a follow-up: 'Can you give me an example?' — the memory keeps the context so it understands what I mean.\n\n[Refusal] Now I ask something off-topic like 'What is the weather today?' — it refuses. It only answers from the video transcript. That is the trust guarantee.")
 
@@ -373,10 +391,10 @@ def slide_close(prs):
     add_text(slide, "AskTube AI makes YouTube learnable by conversation.", 0.8, 1.2, 10.8, 1.25, size=42, color=INK, bold=True)
     add_text(slide, "Search videos. Build transcript knowledge. Ask questions. Verify with timestamps.", 0.85, 2.65, 9.7, 0.5, size=21, color=CYAN)
     add_card(slide, "Mandatory requirements", "LLM chatbot, tools, memory, vector database, text processing, UI, tests, evaluation, and Docker deployment are covered.", 0.85, 4.1, 3.8, 1.35, GREEN)
-    add_card(slide, "Optional features", "Voice input, Whisper fallback, WebSocket streaming, TTS, 3D assistant, and LangSmith tracing are included.", 4.95, 4.1, 3.8, 1.35, PINK)
+    add_card(slide, "Optional features", "Voice input, Whisper fallback, WebSocket streaming, TTS, 3D assistant, analytics, and LangSmith tracing are included.", 4.95, 4.1, 3.8, 1.35, PINK)
     add_card(slide, "Next improvements", "Persistent user accounts, multi-video comparison, HTTPS custom domain, and a stronger production transcript proxy.", 9.05, 4.1, 3.4, 1.35, CYAN)
     add_text(slide, "Thank you", 0.85, 6.72, 3.0, 0.3, size=14, color=MUTED, bold=True)
-    add_notes(slide, "~15 seconds\n\nAskTube AI covers all the mandatory IronHack requirements: LLM chatbot, LangChain tools, conversational memory, ChromaDB vector database, text processing, a polished UI, 98 tests, RAG evaluation, and Docker deployment on EC2. Thank you.")
+    add_notes(slide, "~15 seconds\n\nAskTube AI covers all the mandatory IronHack requirements: LLM chatbot, LangChain tools, conversational memory, ChromaDB vector database, text processing, a polished UI, 98 tests, RAG evaluation, analytics/observability, and Docker deployment on EC2. Thank you.")
 
 
 def build() -> None:
@@ -392,6 +410,7 @@ def build() -> None:
     slide_agent(prs)
     slide_rag(prs)
     slide_voice_ux(prs)
+    slide_analytics(prs)
     slide_evaluation(prs)
     slide_demo(prs)
     slide_close(prs)

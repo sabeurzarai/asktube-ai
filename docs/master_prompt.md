@@ -36,6 +36,9 @@ The platform feels like: Netflix + Perplexity AI + YouTube + futuristic AI assis
 | POST | `/api/evaluations/rag` | Single-turn RAG evaluation |
 | POST | `/api/evaluations/conversation` | Multi-turn conversation evaluation |
 | POST | `/api/speech/transcribe` | Transcribe audio blob via OpenAI Whisper (multipart/form-data, field: audio; returns `{"transcript":"..."}`) |
+| POST | `/api/analytics/events` | Capture frontend product/UX analytics events |
+| GET | `/api/analytics/dashboard` | Return aggregated analytics dashboard data |
+| GET | `/metrics` | Prometheus-format operational metrics |
 | GET | `/health` | Health check |
 
 ### LangChain Tools (`backend/app/tools/`)
@@ -63,6 +66,16 @@ The platform feels like: Netflix + Perplexity AI + YouTube + futuristic AI assis
 | `ConversationMemoryService` | In-process session memory (deque) |
 | `LangSmithEvaluationService` | Heuristic groundedness + hallucination metrics |
 
+### Analytics and Observability (`backend/app/analytics/`)
+
+| Module | Responsibility |
+|---|---|
+| `models.py` | SQLAlchemy tables for analytics events, video metrics, chat metrics, and RAG metrics |
+| `service.py` | Safe async tracking and dashboard aggregation |
+| `middleware.py` | Automatic HTTP request latency, endpoint usage, and error status tracking |
+| `prometheus.py` | Prometheus counters, gauges, and histograms |
+| `database.py` | Async database engine/session and automatic table creation |
+
 ### Frontend (`frontend/`)
 
 | Component | Purpose |
@@ -74,6 +87,8 @@ The platform feels like: Netflix + Perplexity AI + YouTube + futuristic AI assis
 | `ai-workspace.tsx` | Three-panel chat workspace + TTS |
 | `floating-companion.tsx` | Animated journey state companion |
 | `lib/api.ts` | All API + WebSocket calls |
+| `lib/analytics.ts` | Product/UX event tracking with EC2-safe runtime API resolution |
+| `app/analytics/page.tsx` | Observability dashboard with Recharts |
 
 ### Test Coverage
 
@@ -109,6 +124,8 @@ The platform feels like: Netflix + Perplexity AI + YouTube + futuristic AI assis
 - LangChain OpenAI (`langchain-openai`)
 - LangChain Text Splitters
 - LangSmith
+- SQLAlchemy async + aiosqlite / asyncpg
+- Prometheus client
 - ChromaDB
 - OpenAI API (GPT-4o-mini, text-embedding-3-small, Whisper)
 - youtube-transcript-api
@@ -192,6 +209,42 @@ The heuristic evaluator (`LangSmithEvaluationService`) measures:
 Run the evaluation CLI:
 ```bash
 cd backend && python scripts/run_evaluation.py
+```
+
+---
+
+## Analytics and Observability
+
+The analytics system measures product usage, AI/RAG quality, ingestion pipeline performance, UX behaviour, and business-level activity.
+
+Tracked examples:
+- search submissions, search success, voice search, video selection, carousel movement
+- processing started/completed/failed/retried
+- chat starts, user messages, suggested prompts, transcript opens, timestamp clicks
+- RAG retrieval latency, generation latency, retrieved chunks, citation coverage, token estimates
+- transcript time, embedding time, vector insert/query time, chunk counts, Whisper fallback usage
+- HTTP request latency, endpoint usage, WebSocket connections/failures, Prometheus metrics
+
+Dashboard:
+```text
+GET /api/analytics/dashboard
+Frontend page: /analytics
+```
+
+Prometheus:
+```text
+GET /metrics
+GET /api/metrics
+```
+
+Storage defaults to SQLite for local/EC2 simplicity:
+```dotenv
+ANALYTICS_DATABASE_URL=sqlite+aiosqlite:///./data/analytics.db
+```
+
+Production can use PostgreSQL:
+```dotenv
+ANALYTICS_DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/asktube_analytics
 ```
 
 ---

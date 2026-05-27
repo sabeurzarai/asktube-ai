@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import time
 
 from fastapi import HTTPException, status
 from langchain_core.prompts import ChatPromptTemplate
@@ -6,6 +7,9 @@ from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
 from app.core.config import Settings, settings
+from app.analytics.prometheus import RAG_LATENCY
+from app.analytics.schemas import ChatMetricCreate, RAGMetricCreate
+from app.analytics.service import get_analytics_service
 from app.schemas.rag import ChatMessage, RAGChatResponse, RAGStreamEvent, TimestampCitation
 from app.schemas.vectorstore import VectorSearchResult
 from app.services.memory_service import ConversationMemoryService, memory_service
@@ -54,16 +58,29 @@ class RAGService:
         session_id: str | None,
         top_k: int,
     ) -> RAGChatResponse:
+        answer_start = time.perf_counter()
+        retrieval_start = time.perf_counter()
         active_session_id, retrieved_context = await self.prepare_context(
             message=message,
             video_id=video_id,
             session_id=session_id,
             top_k=top_k,
         )
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         if not retrieved_context:
             answer = "I cannot answer that from the transcript because no relevant context was found."
             self.memory.append_exchange(active_session_id, message, answer)
+            await self._record_rag_metrics(
+                message=message,
+                session_id=active_session_id,
+                retrieved_context=[],
+                citations=[],
+                answer=answer,
+                retrieval_ms=retrieval_ms,
+                generation_ms=0,
+                started_at=answer_start,
+            )
             return RAGChatResponse(
                 session_id=active_session_id,
                 answer=answer,
@@ -73,6 +90,7 @@ class RAGService:
             )
 
         chain = RAG_PROMPT | self.create_chat_model(streaming=False)
+        generation_start = time.perf_counter()
         response = await chain.ainvoke(
             {
                 "memory": format_memory(self.memory.get_messages(active_session_id)),
@@ -90,9 +108,20 @@ class RAGService:
                 },
             },
         )
+        generation_ms = (time.perf_counter() - generation_start) * 1000
         answer = str(response.content).strip()
         citations = build_citations(retrieved_context)
         self.memory.append_exchange(active_session_id, message, answer)
+        await self._record_rag_metrics(
+            message=message,
+            session_id=active_session_id,
+            retrieved_context=retrieved_context,
+            citations=citations,
+            answer=answer,
+            retrieval_ms=retrieval_ms,
+            generation_ms=generation_ms,
+            started_at=answer_start,
+        )
 
         return RAGChatResponse(
             session_id=active_session_id,
@@ -110,12 +139,15 @@ class RAGService:
         session_id: str | None,
         top_k: int,
     ) -> AsyncIterator[RAGStreamEvent]:
+        answer_start = time.perf_counter()
+        retrieval_start = time.perf_counter()
         active_session_id, retrieved_context = await self.prepare_context(
             message=message,
             video_id=video_id,
             session_id=session_id,
             top_k=top_k,
         )
+        retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
         yield RAGStreamEvent(
             type="context",
@@ -128,6 +160,16 @@ class RAGService:
         if not retrieved_context:
             answer = "I cannot answer that from the transcript because no relevant context was found."
             self.memory.append_exchange(active_session_id, message, answer)
+            await self._record_rag_metrics(
+                message=message,
+                session_id=active_session_id,
+                retrieved_context=[],
+                citations=[],
+                answer=answer,
+                retrieval_ms=retrieval_ms,
+                generation_ms=0,
+                started_at=answer_start,
+            )
             yield RAGStreamEvent(
                 type="done",
                 session_id=active_session_id,
@@ -140,6 +182,7 @@ class RAGService:
 
         chain = RAG_PROMPT | self.create_chat_model(streaming=True)
         answer_parts: list[str] = []
+        generation_start = time.perf_counter()
 
         async for chunk in chain.astream(
             {
@@ -166,8 +209,19 @@ class RAGService:
             yield RAGStreamEvent(type="token", session_id=active_session_id, token=token)
 
         answer = "".join(answer_parts).strip()
+        generation_ms = (time.perf_counter() - generation_start) * 1000
         citations = build_citations(retrieved_context)
         self.memory.append_exchange(active_session_id, message, answer)
+        await self._record_rag_metrics(
+            message=message,
+            session_id=active_session_id,
+            retrieved_context=retrieved_context,
+            citations=citations,
+            answer=answer,
+            retrieval_ms=retrieval_ms,
+            generation_ms=generation_ms,
+            started_at=answer_start,
+        )
         yield RAGStreamEvent(
             type="done",
             session_id=active_session_id,
@@ -206,6 +260,61 @@ class RAGService:
             api_key=self.config.openai_api_key,
             temperature=0.1,
             streaming=streaming,
+        )
+
+    async def _record_rag_metrics(
+        self,
+        *,
+        message: str,
+        session_id: str,
+        retrieved_context: list[VectorSearchResult],
+        citations: list[TimestampCitation],
+        answer: str,
+        retrieval_ms: float,
+        generation_ms: float,
+        started_at: float,
+    ) -> None:
+        total_ms = (time.perf_counter() - started_at) * 1000
+        RAG_LATENCY.observe(total_ms / 1000)
+        context_tokens = sum(int(result.metadata.get("token_estimate", 0) or 0) for result in retrieved_context)
+        if not context_tokens:
+            context_tokens = sum(max(1, len(result.text.split()) * 4 // 3) for result in retrieved_context)
+        citation_coverage = (
+            len({citation.chunk_id for citation in citations}) / len({r.chunk_id for r in retrieved_context}) * 100
+            if retrieved_context
+            else 100.0
+        )
+        followups = max(0, len([m for m in self.memory.get_messages(session_id) if m.role == "user"]) - 1)
+        analytics = get_analytics_service()
+        await analytics.safe_track(
+            analytics.track_rag_metric(
+                RAGMetricCreate(
+                    query=message,
+                    retrieval_latency=retrieval_ms,
+                    generation_latency=generation_ms,
+                    chunks_retrieved=len(retrieved_context),
+                    embedding_model=self.config.embedding_model,
+                    citation_coverage=round(citation_coverage, 2),
+                    context_tokens=int(context_tokens),
+                    prompt_tokens=int(context_tokens + len(message.split()) * 4 // 3),
+                    completion_tokens=max(1, len(answer.split()) * 4 // 3),
+                    response_length=len(answer),
+                    hallucination_warning=("cannot answer" in answer.lower() and not retrieved_context),
+                    metadata_json={"session_id": session_id},
+                )
+            )
+        )
+        await analytics.safe_track(
+            analytics.track_chat_metric(
+                ChatMetricCreate(
+                    session_id=session_id,
+                    questions_count=1,
+                    avg_response_time=round(total_ms, 2),
+                    tokens_used=int(context_tokens + len(answer.split()) * 4 // 3),
+                    followup_questions=followups,
+                    metadata_json={"citation_count": len(citations)},
+                )
+            )
         )
 
 

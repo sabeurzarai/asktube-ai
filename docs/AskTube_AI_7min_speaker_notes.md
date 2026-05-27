@@ -14,9 +14,10 @@ Use this as your speaking guide during the final presentation. The goal is to so
 | 6 | LangChain agent | 55 sec |
 | 7 | RAG answering | 45 sec |
 | 8 | Voice + UX | 35 sec |
-| 9 | Testing + evaluation | 40 sec |
-| 10 | Live demo plan | 45 sec |
-| 11 | Closing | 35 sec |
+| 9 | Analytics + observability | 35 sec |
+| 10 | Testing + evaluation | 35 sec |
+| 11 | Live demo plan | 40 sec |
+| 12 | Closing | 30 sec |
 
 Total: about 7 minutes.
 
@@ -76,7 +77,9 @@ The AI and data layer uses LangChain, OpenAI models, ChromaDB, Whisper fallback,
 
 Everything runs with Docker Compose: frontend, backend, and ChromaDB.
 
-**Key message:** It is separated like a production app: UI, API, and AI/data pipeline.
+There is also an observability layer: analytics events, RAG metrics, pipeline metrics, Prometheus metrics, and an `/analytics` dashboard.
+
+**Key message:** It is separated like a production app: UI, API, AI/data pipeline, and observability.
 
 ---
 
@@ -144,7 +147,23 @@ There is also text-to-speech for AI answers, a 3D assistant scene, animated load
 
 ---
 
-## Slide 9 - Testing + Evaluation
+## Slide 9 - Analytics + Observability
+
+**Say this:**
+
+I added an analytics and observability system so the app is not only functional, but measurable.
+
+The frontend tracks user actions like searches, video selections, voice search, carousel use, suggested prompts, transcript opens, and timestamp clicks.
+
+The backend tracks RAG metrics like retrieval latency, generation latency, chunks retrieved, token estimates, citation coverage, and hallucination warnings. It also tracks pipeline metrics like transcript time, embedding time, chunk count, Whisper fallback usage, and processing duration.
+
+There is a dashboard at `/analytics`, and Prometheus metrics at `/metrics`.
+
+**Key message:** The project can explain what users do, how the RAG system behaves, and where the pipeline is slow.
+
+---
+
+## Slide 10 - Testing + Evaluation
 
 **Say this:**
 
@@ -158,7 +177,7 @@ LangSmith tracing can also be enabled to inspect latency, context, tool calls, a
 
 ---
 
-## Slide 10 - Live Demo
+## Slide 11 - Live Demo
 
 **Say this:**
 
@@ -174,13 +193,13 @@ During the demo, I want to emphasize trust: every answer should connect back to 
 
 ---
 
-## Slide 11 - Closing
+## Slide 12 - Closing
 
 **Say this:**
 
 To summarize, AskTube AI meets the main project requirements: LLM chatbot, tools, memory, vector database, text processing, UI, tests, evaluation, and deployment.
 
-It also includes optional features like voice input, Whisper fallback, streaming, TTS, a 3D assistant, and LangSmith tracing.
+It also includes optional features like voice input, Whisper fallback, streaming, TTS, a 3D assistant, analytics, Prometheus metrics, and LangSmith tracing.
 
 The main future improvements would be persistent user accounts, multi-video comparison, HTTPS with a custom domain, and a stronger production transcript proxy.
 

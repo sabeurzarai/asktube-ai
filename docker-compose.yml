@@ -37,6 +37,9 @@ services:
       CHROMA_COLLECTION_NAME: asktube_videos
       # Data directories
       AUDIO_CACHE_DIR: /app/data/audio_cache
+      ANALYTICS_DATABASE_URL: sqlite+aiosqlite:///./data/analytics.db
+      ANALYTICS_ENABLED: "true"
+      PROMETHEUS_ENABLED: "true"
       # CORS — allow frontend origin (JSON array format required by pydantic-settings)
       CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
     volumes:

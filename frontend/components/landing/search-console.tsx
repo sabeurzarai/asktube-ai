@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/feedback-states";
 import { Input } from "@/components/ui/input";
 import { transcribeSpeech, type VideoDurationFilter } from "@/lib/api";
+import { elapsedAnalyticsMs, markAnalyticsStart, trackAnalyticsEvent } from "@/lib/analytics";
 import { smoothEase, staggerContainer, subtleItemReveal } from "@/lib/motion";
 
 type SpeechRecognitionResultLike = {
@@ -87,6 +88,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingTimerRef = useRef<number | null>(null);
   const recordingStartRef = useRef(0);
+  const voiceStartRef = useRef(0);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const committedTranscriptRef = useRef("");
   const shouldRestartRef = useRef(false);
@@ -114,6 +116,8 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
 
     recognition.onstart = () => {
       startedAtRef.current = Date.now();
+      voiceStartRef.current = markAnalyticsStart();
+      trackAnalyticsEvent("voice_search_started", { engine: "web_speech" });
       setIsListening(true);
       setVoiceError("");
     };
@@ -143,7 +147,15 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
         setIsListening(false);
         shouldRestartRef.current = false;
         setVoiceError("Could not connect to speech service. Try again.");
+        trackAnalyticsEvent("voice_search_failed", { engine: "web_speech", reason: "restart_loop" });
         return;
+      }
+      if (committedTranscriptRef.current.trim()) {
+        trackAnalyticsEvent(
+          "voice_search_completed",
+          { engine: "web_speech", transcript_length: committedTranscriptRef.current.length },
+          elapsedAnalyticsMs(voiceStartRef.current)
+        );
       }
       setIsListening(false);
     };
@@ -157,6 +169,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
       // we just flip the flag and show a prompt - the next mic click will
       // call startWhisperRecording() from inside the button's onClick handler.
       if (event.error === "network") {
+        trackAnalyticsEvent("voice_search_failed", { engine: "web_speech", reason: event.error });
         setUseWhisperFallback(true);
         setVoiceError("Speech service unavailable. Tap the mic to record with Whisper instead.");
         return;
@@ -168,6 +181,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
         "service-not-allowed": "Speech service not allowed on this page.",
       };
       setVoiceError(msg[event.error] ?? "Voice search stopped. Try again.");
+      trackAnalyticsEvent("voice_search_failed", { engine: "web_speech", reason: event.error });
     };
 
     recognition.onresult = (event) => {
@@ -228,6 +242,8 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
     setVoiceError("");
     setRecordingSeconds(0);
     try {
+      voiceStartRef.current = markAnalyticsStart();
+      trackAnalyticsEvent("voice_search_started", { engine: "whisper" });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = getBestMimeType();
       const recorderOptions = mimeType ? { mimeType } : undefined;
@@ -256,11 +272,18 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
               .replace(/\s+/g, " ")
               .trim();
             setQuery(committedTranscriptRef.current);
+            trackAnalyticsEvent(
+              "voice_search_completed",
+              { engine: "whisper", transcript_length: transcript.length },
+              elapsedAnalyticsMs(voiceStartRef.current)
+            );
           } else {
             setVoiceError("Nothing detected. Speak clearly and try again.");
+            trackAnalyticsEvent("voice_search_failed", { engine: "whisper", reason: "empty_transcript" });
           }
         } catch {
           setVoiceError("Transcription failed. Try again.");
+          trackAnalyticsEvent("voice_search_failed", { engine: "whisper", reason: "transcription_error" });
         } finally {
           setIsWhisperProcessing(false);
           setRecordingSeconds(0);
@@ -279,6 +302,7 @@ export function SearchConsole({ onSearch, externalSearchState }: SearchConsolePr
       }, 500);
     } catch {
       setVoiceError("Microphone access denied.");
+      trackAnalyticsEvent("voice_search_failed", { engine: "whisper", reason: "microphone_denied" });
     }
   }
 

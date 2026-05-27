@@ -167,7 +167,7 @@ class TranscriptService:
 
     def _build_youtube_proxy_config(self) -> GenericProxyConfig | WebshareProxyConfig | None:
         if self.config.webshare_proxy_url:
-            proxy_url = self.config.webshare_proxy_url.strip().rstrip("/")
+            proxy_url = self.config.webshare_proxy_url.strip()
             return GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
 
         if not self.config.webshare_proxy_username or not self.config.webshare_proxy_password:

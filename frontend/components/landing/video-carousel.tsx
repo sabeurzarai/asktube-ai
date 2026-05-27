@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, VideoSkeletonGrid } from "@/components/ui/feedback-states";
 import { type YouTubeVideo, decodeHtml, formatDuration } from "@/lib/api";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { sectionReveal, sectionViewport, smoothEase, springMotion } from "@/lib/motion";
 
@@ -120,12 +121,23 @@ export function VideoCarousel({ videos, isLoading, hasError, onRetry, onSelectVi
 
   const updateSelection = useCallback(() => {
     if (!emblaApi) return;
-    setSelectedIndex(emblaApi.selectedScrollSnap());
-  }, [emblaApi]);
+    const index = emblaApi.selectedScrollSnap();
+    setSelectedIndex(index);
+    trackAnalyticsEvent("carousel_scrolled", {
+      selected_index: index,
+      slide_count: displayVideos.length,
+      selected_video_id: displayVideos[index]?.video_id,
+    });
+  }, [displayVideos, emblaApi]);
 
   const selectVideo = useCallback((video: YouTubeVideo) => {
+    trackAnalyticsEvent("center_card_selection_rate", {
+      video_id: video.video_id,
+      selected_index: selectedIndex,
+      is_center_card: displayVideos[selectedIndex]?.video_id === video.video_id,
+    });
     onSelectVideo?.(video);
-  }, [onSelectVideo]);
+  }, [displayVideos, onSelectVideo, selectedIndex]);
 
   // Reset to first slide when videos change
   useEffect(() => {

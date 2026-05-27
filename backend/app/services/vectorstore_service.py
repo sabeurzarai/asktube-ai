@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 import chromadb
@@ -7,6 +8,8 @@ from fastapi import HTTPException, status
 from langchain_openai import OpenAIEmbeddings
 
 from app.core.config import Settings, settings
+from app.analytics.prometheus import EMBEDDING_DURATION, VECTOR_QUERY_DURATION
+from app.analytics.service import get_analytics_service
 from app.schemas.chunks import TranscriptChunk
 from app.schemas.vectorstore import VectorSearchResult
 
@@ -46,11 +49,24 @@ class ChromaVectorStoreService:
 
         missing_embeddings = [chunk for chunk in chunks if chunk.embedding is None]
         if missing_embeddings:
+            embedding_start = time.perf_counter()
             embeddings = OpenAIEmbeddings(
                 model=self.config.embedding_model,
                 api_key=self.config.openai_api_key,
             )
             vectors = await embeddings.aembed_documents([chunk.text for chunk in missing_embeddings])
+            embedding_ms = (time.perf_counter() - embedding_start) * 1000
+            EMBEDDING_DURATION.observe(embedding_ms / 1000)
+            get_analytics_service().safe_track_background(
+                get_analytics_service().track_event_safe(
+                    "embedding_generated",
+                    duration_ms=embedding_ms,
+                    metadata_json={
+                        "chunk_count": len(missing_embeddings),
+                        "embedding_model": self.config.embedding_model,
+                    },
+                )
+            )
             for chunk, vector in zip(missing_embeddings, vectors, strict=True):
                 chunk.embedding = vector
 
@@ -58,11 +74,20 @@ class ChromaVectorStoreService:
         ids = [chunk.chunk_id for chunk in chunks]
 
         try:
+            insert_start = time.perf_counter()
             collection.upsert(
                 ids=ids,
                 documents=[chunk.text for chunk in chunks],
                 embeddings=[chunk.embedding for chunk in chunks if chunk.embedding is not None],
                 metadatas=[to_chroma_metadata(chunk) for chunk in chunks],
+            )
+            insert_ms = (time.perf_counter() - insert_start) * 1000
+            get_analytics_service().safe_track_background(
+                get_analytics_service().track_event_safe(
+                    "vector_insert_completed",
+                    duration_ms=insert_ms,
+                    metadata_json={"chunk_count": len(chunks), "collection": self.config.chroma_collection_name},
+                )
             )
         except Exception as exc:
             raise HTTPException(
@@ -88,23 +113,40 @@ class ChromaVectorStoreService:
             model=self.config.embedding_model,
             api_key=self.config.openai_api_key,
         )
+        embedding_start = time.perf_counter()
         query_embedding = await embeddings.aembed_query(query)
+        EMBEDDING_DURATION.observe(time.perf_counter() - embedding_start)
         where = {"video_id": video_id} if video_id else None
 
         try:
+            query_start = time.perf_counter()
             result = self.get_collection().query(
                 query_embeddings=[query_embedding],
                 n_results=limit,
                 where=where,
                 include=["documents", "metadatas", "distances"],
             )
+            query_ms = (time.perf_counter() - query_start) * 1000
+            VECTOR_QUERY_DURATION.observe(query_ms / 1000)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Failed to query ChromaDB.",
             ) from exc
 
-        return parse_chroma_query_result(result)
+        parsed = parse_chroma_query_result(result)
+        get_analytics_service().safe_track_background(
+            get_analytics_service().track_event_safe(
+                "vector_query_completed",
+                duration_ms=query_ms,
+                metadata_json={
+                    "video_id": video_id,
+                    "limit": limit,
+                    "returned_documents_count": len(parsed),
+                },
+            )
+        )
+        return parsed
 
 
 def to_chroma_metadata(chunk: TranscriptChunk) -> dict[str, str | int | float]:

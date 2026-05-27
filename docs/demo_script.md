@@ -20,6 +20,7 @@ For a tighter 7-minute talk, use `docs/AskTube_AI_7min_speaker_notes.md`.
 1. **Full RAG pipeline** - not just an LLM wrapper. Retrieval, chunking, embeddings, and vector search all run on real YouTube data.
 2. **LangChain agent orchestration** - the chat endpoint uses a tool-calling agent that decides whether to search YouTube, ingest a new video, or answer directly.
 3. **Transcript-only contract** - the system prompt, the retrieval chain, and the evaluation metrics all enforce that the model cannot fabricate content outside the transcript.
+4. **Production observability** - the app records product events, RAG latency, citation coverage, processing timings, WebSocket health, and Prometheus metrics.
 
 ---
 
@@ -34,6 +35,9 @@ Browser (Next.js 14)
     +-- POST /api/chat                      direct RAG (LangChain + ChatOpenAI)
     +-- WS   /api/chat/stream               streaming token-by-token chat
     +-- POST /api/agent/chat                LangChain tool-calling agent
+    +-- POST /api/analytics/events          product + UX event capture
+    +-- GET  /api/analytics/dashboard       observability dashboard data
+    +-- GET  /metrics                       Prometheus operational metrics
             +-- tool: search_youtube_videos
             +-- tool: ingest_video          (transcript + chunk + embed + store)
             +-- tool: retrieve_context
@@ -100,6 +104,25 @@ python scripts/run_evaluation.py
 
 Point out: 17 eval cases across 6 categories - answerable questions, refusals, citation accuracy, summaries, hallucination prevention, and multi-turn memory. All run through `LangSmithEvaluationService`. Results: 5 PASS, 12 WARN, 0 FAIL (WARNs are the heuristic scorer being conservative about paraphrased answers - no behavioral failures). The backend also ships 98 pytest tests covering all routes, services, tools, and the new speech transcription endpoint.
 
+### Step 8 - Show analytics (optional, 30 seconds)
+
+Open:
+
+`http://<EC2_PUBLIC_IP>:3001/analytics`
+
+Point out:
+- Overview cards: active users, questions, processed videos, session time
+- AI metrics: RAG latency, token estimates, chunks retrieved, citation coverage
+- Pipeline metrics: transcript time, embeddings, processing duration
+- UX metrics: carousel interaction, voice failures, timestamp clicks, 3D assistant engagement
+- Recent events: search, video selection, processing, chat, prompts, citations
+
+Then open:
+
+`http://<EC2_PUBLIC_IP>:8000/metrics`
+
+Point out: Prometheus metrics are available for HTTP latency, RAG latency, embeddings, vector search, processing duration, and WebSocket health.
+
 ---
 
 ## 4. Mandatory Requirements Coverage
@@ -115,6 +138,7 @@ Point out: 17 eval cases across 6 categories - answerable questions, refusals, c
 | **Automated tests** | 98 pytest tests - tools, services, routes, WebSocket streams, evaluation metrics, speech transcription |
 | **Frontend** | Next.js 14 / React / TypeScript / Tailwind CSS |
 | **Evaluation** | `LangSmithEvaluationService` - groundedness, hallucination risk, citation quality, latency; 17-case eval dataset |
+| **Analytics / observability** | `/analytics` dashboard, `/api/analytics/dashboard`, `/metrics`, FastAPI middleware, product/UX/RAG/pipeline metrics |
 
 ---
 
@@ -127,6 +151,9 @@ Point out: 17 eval cases across 6 categories - answerable questions, refusals, c
 - Text-to-speech on AI responses (browser SpeechSynthesis, opt-in, per-message, male voice preferred)
 - Whisper transcription fallback for videos without captions
 - LangSmith tracing integration (`@traceable` on all chain methods)
+- Product analytics dashboard (`/analytics`)
+- Prometheus metrics endpoint (`/metrics`)
+- FastAPI request analytics middleware
 - Cinematic 3D AI assistant scene (Three.js / React Three Fiber)
 - Framer Motion animations throughout
 - `POST /api/evaluations/rag` and `POST /api/evaluations/conversation` endpoints
@@ -158,6 +185,7 @@ Full details: `docs/youtube_data_strategy.md`.
 | ChromaDB in persistent-file mode | Works locally; production would use HTTP client mode or a hosted vector DB |
 | Agent does not stream | `POST /api/agent/chat` returns a full response; streaming uses the separate `/api/chat/stream` WebSocket |
 | No authentication | The demo has no login or rate limiting - fine for a school project, not for production |
+| Analytics users are anonymous | The dashboard uses generated browser IDs, not real accounts, because the project has no login system |
 | Heuristic evaluator is conservative | Term-overlap groundedness scorer flags paraphrased answers as warnings; LLM evaluator mode would score correctly but costs extra API calls |
 | YouTube blocks many cloud IPs | EC2 proves Docker deployment, but full transcript ingestion may need local demo or a working residential HTTPS proxy endpoint |
 | Voice search requires closed Zoom on Windows | Zoom (and other conferencing apps) may claim exclusive mode on the microphone, causing MediaRecorder to capture 0-level audio. Fix: close Zoom, or disable exclusive mode in Windows Sound settings -> Properties -> Advanced |
@@ -172,6 +200,8 @@ Full details: `docs/youtube_data_strategy.md`.
 - User accounts and saved sessions
 - Chapter-level transcript segmentation using YouTube chapter metadata
 - LangSmith evaluation dashboard with trend charts
+- PostgreSQL-hosted analytics database for long-running production data
+- Grafana dashboard on top of Prometheus metrics
 - LLM-based evaluator mode (`RAG_EVALUATOR_MODE=llm`)
 - Production polish: custom domain, HTTPS, and a more reliable transcript proxy provider
 
@@ -192,6 +222,8 @@ backend/
     retrieve_context.py
     answer_question.py
   app/api/routes/vectorstore.py            ingest REST + WS stream endpoints
+  app/api/routes/analytics.py              analytics dashboard + event ingest
+  app/analytics/                           SQLAlchemy models, service, middleware, Prometheus metrics
   app/services/observability_service.py    LangSmith evaluation metrics
   tests/fixtures/rag_eval_cases.json       17 eval cases
   scripts/run_evaluation.py               Evaluation CLI runner
@@ -200,5 +232,7 @@ frontend/
   components/landing/cinematic-hero.tsx    Main page orchestration
   components/landing/processing-screen.tsx WebSocket ingest progress
   components/landing/ai-workspace.tsx      Chat workspace + TTS
-  lib/api.ts                               All backend API calls + WS_BASE
+  app/analytics/page.tsx                   Recharts analytics dashboard
+  lib/api.ts                               All backend API calls + runtime API/WS base resolution
+  lib/analytics.ts                         Frontend product/UX event tracking
 ```

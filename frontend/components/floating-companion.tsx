@@ -8,6 +8,7 @@ import { Bot, Clock3, Mic, Send, Volume2, X } from "lucide-react";
 import * as THREE from "three";
 
 import { chatWithVideo, transcribeSpeech, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import type { JourneyStep } from "@/components/landing/cinematic-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -643,7 +644,15 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
         <div className="relative">
           <motion.button
             type="button"
-            onClick={() => { setIsOpen((v) => !v); setShowBubble(false); }}
+            onClick={() => {
+              trackAnalyticsEvent("3d_chatbot_interacted", {
+                action: isOpen ? "close" : "open",
+                journey_step: journeyStep,
+                video_id: selectedVideo?.video_id,
+              });
+              setIsOpen((v) => !v);
+              setShowBubble(false);
+            }}
             aria-label={isOpen ? "Close AI tutor chat" : cfg.bubble.slice(0, 50)}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.92 }}
@@ -748,7 +757,14 @@ export function FloatingCompanion({ isReady, selectedVideo, journeyStep }: Float
                           <button
                             key={p}
                             type="button"
-                            onClick={() => sendMessage(p)}
+                            onClick={() => {
+                              trackAnalyticsEvent("suggested_prompt_clicked", {
+                                source: "floating_companion",
+                                prompt: p,
+                                video_id: selectedVideo?.video_id,
+                              });
+                              sendMessage(p);
+                            }}
                             className="rounded-full border border-white/10 bg-white/[0.055] px-3 py-1.5 text-xs text-slate-300 transition hover:border-cyan-200/30 hover:bg-cyan-200/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                           >
                             {p}

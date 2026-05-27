@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/feedback-states";
 import { Input } from "@/components/ui/input";
 import { agentChatWithVideo, transcribeSpeech, type TimestampCitation, type YouTubeVideo } from "@/lib/api";
+import { elapsedAnalyticsMs, markAnalyticsStart, trackAnalyticsEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { sectionReveal, sectionViewport, smoothEase, springMotion, staggerContainer, subtleItemReveal } from "@/lib/motion";
 
@@ -395,6 +396,15 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
     const trimmed = question.trim();
     if (!trimmed) { setChatState("empty"); return; }
     if (!selectedVideo) { setChatState("error"); return; }
+    const startedAt = markAnalyticsStart();
+    if (history.filter((entry) => entry.role === "user").length === 0) {
+      trackAnalyticsEvent("chat_started", { video_id: selectedVideo.video_id });
+    }
+    trackAnalyticsEvent("message_sent", {
+      video_id: selectedVideo.video_id,
+      message_length: trimmed.length,
+      is_followup: history.some((entry) => entry.role === "user"),
+    });
 
     // Stop any active voice input before submitting
     if (voiceIsListening) {
@@ -414,6 +424,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
 
     try {
       const data = await agentChatWithVideo(trimmed, selectedVideo.video_id, sessionId);
+      const responseMs = elapsedAnalyticsMs(startedAt);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       setSessionId(data.session_id);
@@ -421,6 +432,12 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
         ...prev,
         { role: "assistant", content: data.answer, citations: data.citations, toolSteps: data.tool_steps_used },
       ]);
+      if (/summarize/i.test(trimmed)) {
+        trackAnalyticsEvent("summary_generated", { video_id: selectedVideo.video_id }, responseMs);
+      }
+      if (/study notes/i.test(trimmed)) {
+        trackAnalyticsEvent("study_notes_generated", { video_id: selectedVideo.video_id }, responseMs);
+      }
       setChatProgress(100);
       setChatState("idle");
     } catch (err) {
@@ -712,6 +729,10 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
                   type="button"
                   aria-label={`Ask: ${prompt}`}
                   onClick={() => {
+                    trackAnalyticsEvent("suggested_prompt_clicked", {
+                      prompt,
+                      video_id: selectedVideo?.video_id,
+                    });
                     setMessage(prompt);
                     submitQuestion(prompt);
                   }}
@@ -833,6 +854,7 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
           <label
             htmlFor="workspace-transcript-toggle"
             aria-controls="workspace-transcript-panel"
+            onClick={() => trackAnalyticsEvent("transcript_opened", { video_id: selectedVideo?.video_id })}
             className="mb-4 flex min-h-12 w-full cursor-pointer items-center justify-between gap-3 text-left peer-checked:[&_.transcript-chevron]:rotate-180 focus-within:outline-none focus-within:ring-2 focus-within:ring-cyan-300 md:pointer-events-none md:cursor-default"
           >
             <div>
@@ -867,6 +889,11 @@ export function AIWorkspace({ selectedVideo }: AIWorkspaceProps) {
                     href={selectedVideo ? `${selectedVideo.youtube_url}&t=${Math.floor(citation.start_seconds)}` : "#"}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => trackAnalyticsEvent("timestamp_clicked", {
+                      video_id: citation.video_id,
+                      chunk_id: citation.chunk_id,
+                      start_seconds: citation.start_seconds,
+                    })}
                     aria-label={`Jump to ${citation.timestamp} in video`}
                     className="block w-full rounded-2xl border border-cyan-200/30 bg-cyan-200/[0.075] p-4 text-left shadow-[0_0_34px_rgba(34,211,238,.08)] transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/50 hover:bg-cyan-200/[0.11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                   >

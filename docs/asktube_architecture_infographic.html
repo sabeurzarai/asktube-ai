@@ -37,7 +37,7 @@
 <div class="wrap">
 <svg width="1120" height="1040" viewBox="0 0 1120 1040" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" role="img" aria-labelledby="title desc">
 <title id="title">AskTube AI Full Project Architecture</title>
-<desc id="desc">A paper-style architecture infographic showing the current AskTube AI system: Next.js frontend, FastAPI backend, LangChain tools and agent orchestration, YouTube transcript ingestion, ChromaDB vector storage, RAG answering, streaming chat, evaluation, Docker, and deployment.</desc>
+<desc id="desc">A paper-style architecture infographic showing the current AskTube AI system: Next.js frontend, FastAPI backend, LangChain tools and agent orchestration, YouTube transcript ingestion, ChromaDB vector storage, RAG answering, streaming chat, analytics, Prometheus metrics, evaluation, Docker, and deployment.</desc>
 
 <defs>
   <marker id="arrowBlue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
@@ -80,7 +80,7 @@
 
 <text x="18" y="30" fill="#1a1a2e" font-size="24" font-weight="900">ASKTUBE AI</text>
 <text x="18" y="55" fill="#1a1a2e" font-size="24" font-weight="900">ARCHITECTURE</text>
-<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">CURRENT IMPLEMENTATION MAP - DOCKER + EC2</text>
+<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">CURRENT IMPLEMENTATION MAP - DOCKER + EC2 + ANALYTICS</text>
 
 <!-- User input -->
 <circle cx="430" cy="96" r="17" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>
@@ -132,6 +132,7 @@
 <text x="315" y="298" fill="#1976d2" font-size="12">/api/vectorstore</text>
 <text x="315" y="316" fill="#1976d2" font-size="12">/api/chat + WebSocket streaming</text>
 <text x="315" y="334" fill="#1976d2" font-size="12" font-weight="800">/api/agent/chat</text>
+<text x="315" y="348" fill="#1976d2" font-size="10" font-weight="800">/api/analytics + /metrics</text>
 
 <!-- Tools and agent -->
 <rect x="578" y="156" width="244" height="194" rx="14" fill="#fce4ec" stroke="#d81b60" stroke-width="2.5" stroke-dasharray="9,4"/>
@@ -213,12 +214,12 @@
 
 <rect x="292" y="648" width="252" height="155" rx="14" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2.5"/>
 <text x="306" y="673" fill="#4a148c" font-size="16" font-weight="900">EVALUATION</text>
-<text x="306" y="695" fill="#6a1b9a" font-size="12" font-weight="800">LangSmith + project testing</text>
+<text x="306" y="695" fill="#6a1b9a" font-size="12" font-weight="800">LangSmith + analytics dashboard</text>
 <line x1="306" y1="704" x2="530" y2="704" stroke="#9c27b0" stroke-width="1" stroke-dasharray="4,3"/>
-<text x="306" y="724" fill="#6a1b9a" font-size="11">RAG debugging traces</text>
-<text x="306" y="741" fill="#6a1b9a" font-size="11">latency analysis</text>
-<text x="306" y="758" fill="#6a1b9a" font-size="11">hallucination-risk checks</text>
-<text x="306" y="775" fill="#6a1b9a" font-size="11">manual requirements + demo script</text>
+<text x="306" y="724" fill="#6a1b9a" font-size="11">LangSmith RAG/tool traces</text>
+<text x="306" y="741" fill="#6a1b9a" font-size="11">/analytics product + UX dashboard</text>
+<text x="306" y="758" fill="#6a1b9a" font-size="11">/metrics Prometheus scraping</text>
+<text x="306" y="775" fill="#6a1b9a" font-size="11">RAG latency + citation coverage</text>
 
 <rect x="574" y="648" width="252" height="155" rx="14" fill="#e0f2f1" stroke="#00897b" stroke-width="2.5"/>
 <text x="588" y="673" fill="#00695c" font-size="16" font-weight="900">FINAL EXPERIENCE</text>
@@ -235,7 +236,7 @@
 <line x1="868" y1="738" x2="1094" y2="738" stroke="#78909c" stroke-width="1" stroke-dasharray="4,3"/>
 <text x="868" y="757" fill="#455a64" font-size="11">frontend Dockerfile + backend Dockerfile</text>
 <text x="868" y="774" fill="#455a64" font-size="11">docker-compose with ChromaDB service</text>
-<text x="868" y="791" fill="#455a64" font-size="11">EC2 env: API URL, WS URL, CORS, proxy</text>
+<text x="868" y="791" fill="#455a64" font-size="11">analytics DB + EC2 env/proxy config</text>
 
 <!-- Arrows -->
 <path d="M 644 136 C 610 148, 575 155, 542 180" stroke="#d81b60" stroke-width="2.5" fill="none" marker-end="url(#arrowPink)"/>
@@ -292,8 +293,8 @@
 <line x1="891" y1="865" x2="1097" y2="865" stroke="#7b1fa2" stroke-width="1" stroke-dasharray="3,2"/>
 <text x="891" y="881" fill="#6a1b9a" font-size="10">Docker Compose: frontend/backend/Chroma</text>
 <text x="891" y="896" fill="#6a1b9a" font-size="10">LangSmith optional tracing</text>
-<text x="891" y="911" fill="#6a1b9a" font-size="10">evaluation dataset + runner</text>
-<text x="891" y="926" fill="#6a1b9a" font-size="10">manual test requirements</text>
+<text x="891" y="911" fill="#6a1b9a" font-size="10">analytics dashboard + Prometheus metrics</text>
+<text x="891" y="926" fill="#6a1b9a" font-size="10">evaluation dataset + manual requirements</text>
 <text x="891" y="941" fill="#6a1b9a" font-size="10">demo script + safety documentation</text>
 
 <!-- Legend -->
@@ -308,7 +309,7 @@
 <text x="700" y="993" fill="#2e7d32" font-size="12">answer returned to learner</text>
 
 <text x="18" y="1020" fill="#8d8d8d" font-size="11">
-Core rule: AskTube AI answers only from retrieved transcript context, with timestamp citations, conversational memory, and graceful loading, empty, retry, and error states.
+Core rule: AskTube AI answers only from retrieved transcript context, with timestamp citations, conversational memory, analytics, and graceful loading, empty, retry, and error states.
 </text>
 </svg>
 </div>

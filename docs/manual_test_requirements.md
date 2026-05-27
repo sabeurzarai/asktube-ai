@@ -18,6 +18,8 @@ AskTube AI is a cinematic AI-powered YouTube learning platform combining:
 - Text-to-speech on AI answers (browser SpeechSynthesis)
 - 3D AI assistant scene (Three.js)
 - Cinematic Next.js 14 frontend
+- Analytics dashboard for product, RAG, pipeline, UX, and business metrics
+- Prometheus metrics endpoint and FastAPI request middleware
 
 ---
 
@@ -29,6 +31,8 @@ AskTube AI is a cinematic AI-powered YouTube learning platform combining:
 | Local backend | `http://localhost:8000` |
 | EC2 frontend | `http://<EC2_PUBLIC_IP>:3001` when port 3000 is occupied |
 | EC2 backend | `http://<EC2_PUBLIC_IP>:8000` |
+| Analytics dashboard | `http://localhost:3000/analytics` or `http://<EC2_PUBLIC_IP>:3001/analytics` |
+| Prometheus metrics | `GET http://localhost:8000/metrics` |
 | API docs | `http://localhost:8000/docs` |
 | Health check | `GET http://localhost:8000/health` -> `{"status":"ok"}` |
 | Browser | Latest Chrome, Edge, or Firefox |
@@ -48,6 +52,8 @@ The application passes manual acceptance when:
 - AI answers include timestamp citations
 - Agent tool breadcrumb shows which tools fired
 - TTS read-aloud button works on AI answers
+- Analytics dashboard loads and reflects recent interactions
+- Prometheus metrics endpoint returns text/plain metrics
 - Loading, empty, and error states are recoverable
 - Interface is responsive without horizontal overflow
 
@@ -167,6 +173,22 @@ Hallucination filter: single-word responses such as "you" or "thank you" are sup
 Requires: python-multipart==0.0.20 installed in the backend.
 ```
 
+### API-013 Analytics Dashboard
+
+```
+GET /api/analytics/dashboard
+Expected: overview, ai_metrics, pipeline_metrics, ux_metrics, business_metrics, recent_events
+The response should be 200 even when there are no events yet.
+After using the app, recent_events should include frontend events such as search_submitted, video_selected, processing_started, message_sent, suggested_prompt_clicked, or timestamp_clicked.
+```
+
+### API-014 Prometheus Metrics
+
+```
+GET /metrics
+Expected: Prometheus text output containing metrics such as request_count, http_request_duration_seconds, rag_latency_seconds, embedding_duration_seconds, vector_query_duration_seconds, processing_duration_seconds, websocket_connections, websocket_failures.
+```
+
 ### API-011 Evaluation Endpoints
 
 ```
@@ -283,6 +305,16 @@ At 390px width:
 - Focus indicators visible on dark background
 - Decorative 3D canvas hidden from screen readers (`aria-hidden`)
 
+### FR-012 Analytics Dashboard
+
+- Open `/analytics`
+- Dashboard header and overview KPI cards render
+- Empty analytics state is graceful if no user actions have been captured yet
+- After performing a search and sending a chat message, refresh `/analytics`
+- Recent events should show the captured actions
+- AI, pipeline, UX, and business sections should render without layout overflow
+- Dashboard remains readable at mobile width
+
 ---
 
 ## Regression Checklist
@@ -304,6 +336,8 @@ Run before demo or submission:
 - [ ] TTS "Read aloud" button appears and works
 - [ ] TTS "Stop" button cancels speech
 - [ ] Citations panel shows timestamp cards with YouTube deep-links
+- [ ] `/analytics` loads and shows overview, AI, pipeline, UX, business, and recent events sections
+- [ ] `/metrics` returns Prometheus metrics text
 - [ ] Transcript panel toggles on mobile
 - [ ] No horizontal overflow at 390px
 - [ ] Keyboard navigation works throughout
