@@ -187,7 +187,7 @@ def slide_cover(prs):
     add_text(slide, "AskTube AI", 0.7, 1.0, 7.6, 0.95, size=58, color=INK, bold=True)
     add_text(slide, "Chat with YouTube videos through transcript-grounded AI.", 0.75, 2.0, 7.8, 0.55, size=21, color=CYAN)
     add_text(slide, "Final Project | Sabeur Zarai | IronHack | Docker + EC2", 0.78, 6.55, 6.6, 0.28, size=12, color=MUTED, bold=True)
-    add_text(slide, "Live demo: http://18.157.233.122:3001/", 0.78, 6.82, 7.5, 0.28, size=12, color=CYAN, bold=True)
+    add_text(slide, "Live demo: https://asktube-ai.duckdns.org/", 0.78, 6.82, 7.5, 0.28, size=12, color=CYAN, bold=True)
 
     add_shape(slide, 8.0, 1.0, 4.4, 4.8, CARD, transparency=0, line_color=CYAN)
     add_text(slide, "SEARCH", 8.35, 1.42, 3.7, 0.35, size=16, color=CYAN, bold=True, caps=True, spacing=2.5)
@@ -360,7 +360,7 @@ def slide_demo(prs):
     add_bullets(
         slide,
         [
-            "Live app: http://18.157.233.122:3001/ (EC2 deployment with Webshare proxy)",
+            "Live app: https://asktube-ai.duckdns.org/ (EC2 + Nginx + HTTPS + Webshare proxy)",
             "Search with a duration filter, for example: python tutorial for beginners under 10 minutes.",
             "Pick a video and click Prepare to show real ingestion progress.",
             "Ask: What is Python used for?",
@@ -382,7 +382,7 @@ def slide_demo(prs):
     add_text(slide, "What to emphasize", 8.38, 2.38, 3.2, 0.35, size=14, color=PINK, bold=True, caps=True, spacing=1.5)
     add_text(slide, "This is not a generic chatbot. It is a transcript-grounded learning workflow with tools, memory, vector search, citations, analytics, and a polished UI.", 8.38, 3.0, 3.1, 1.45, size=18, color=INK)
     add_text(slide, "Keep the demo focused on trust: every answer links back to the video. EC2 proves deployment; local run proves full transcript access when YouTube blocks cloud IPs.", 8.38, 4.65, 3.1, 0.9, size=11, color=MUTED)
-    add_notes(slide, "~90 seconds\n\nLet me show you the live app. Open http://18.157.233.122:3001/ — this is running on AWS EC2 with a Webshare residential proxy to bypass YouTube's cloud IP restrictions.\n\n[Search] I'll type 'python tutorial for beginners' and apply a duration filter. [Results appear] Pick a video and click Prepare. [Watch the progress steps: metadata, transcript, chunking, embeddings, storage.]\n\n[Chat] Now I ask: 'What is Python used for?' — [Answer appears with timestamp chips] See the citations — each one links to the exact moment in the video. [Click a timestamp]\n\n[Follow-up] Now a follow-up: 'Can you give me an example?' — the memory keeps the context so it understands what I mean.\n\n[Refusal] Now I ask something off-topic like 'What is the weather today?' — it refuses. It only answers from the video transcript. That is the trust guarantee.")
+    add_notes(slide, "~90 seconds\n\nLet me show you the live app. Open https://asktube-ai.duckdns.org/ — this is running on AWS EC2 behind Nginx with a DuckDNS domain and Let's Encrypt HTTPS, so Chrome can allow microphone access. The backend also supports a Webshare residential proxy to reduce YouTube cloud-IP transcript blocking.\n\n[Search] I'll type 'python tutorial for beginners' or use voice search and apply a duration filter. [Results appear] Pick a video and click Prepare. [Watch the progress steps: metadata, transcript, chunking, embeddings, storage.]\n\n[Chat] Now I ask: 'What is Python used for?' — [Answer appears with timestamp chips] See the citations — each one links to the exact moment in the video. [Click a timestamp]\n\n[Follow-up] Now a follow-up: 'Can you give me an example?' — the memory keeps the context so it understands what I mean.\n\n[Refusal] Now I ask something off-topic like 'What is the weather today?' — it refuses. It only answers from the video transcript. That is the trust guarantee.")
 
 
 def slide_close(prs):
@@ -392,7 +392,7 @@ def slide_close(prs):
     add_text(slide, "Search videos. Build transcript knowledge. Ask questions. Verify with timestamps.", 0.85, 2.65, 9.7, 0.5, size=21, color=CYAN)
     add_card(slide, "Mandatory requirements", "LLM chatbot, tools, memory, vector database, text processing, UI, tests, evaluation, and Docker deployment are covered.", 0.85, 4.1, 3.8, 1.35, GREEN)
     add_card(slide, "Optional features", "Voice input, Whisper fallback, WebSocket streaming, TTS, 3D assistant, analytics, and LangSmith tracing are included.", 4.95, 4.1, 3.8, 1.35, PINK)
-    add_card(slide, "Next improvements", "Persistent user accounts, multi-video comparison, HTTPS custom domain, and a stronger production transcript proxy.", 9.05, 4.1, 3.4, 1.35, CYAN)
+    add_card(slide, "Next improvements", "Persistent user accounts, multi-video comparison, paid custom domain, and a stronger production transcript proxy.", 9.05, 4.1, 3.4, 1.35, CYAN)
     add_text(slide, "Thank you", 0.85, 6.72, 3.0, 0.3, size=14, color=MUTED, bold=True)
     add_notes(slide, "~15 seconds\n\nAskTube AI covers all the mandatory IronHack requirements: LLM chatbot, LangChain tools, conversational memory, ChromaDB vector database, text processing, a polished UI, 98 tests, RAG evaluation, analytics/observability, and Docker deployment on EC2. Thank you.")
 

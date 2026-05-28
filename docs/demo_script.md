@@ -4,7 +4,9 @@ Presentation guide for the IronHack final project. Total time: ~8 minutes.
 
 For a tighter 7-minute talk, use `docs/AskTube_AI_7min_speaker_notes.md`.
 
-**Live app:** http://18.157.233.122:3001/
+**Live app:** https://asktube-ai.duckdns.org/
+
+**Demo video:** https://youtu.be/hSB3AvbUahY
 
 ---
 
@@ -27,7 +29,11 @@ For a tighter 7-minute talk, use `docs/AskTube_AI_7min_speaker_notes.md`.
 ## 2. Architecture (30 seconds, point at the screen)
 
 ```
-Browser (Next.js 14)
+Browser (Next.js 14 over HTTPS)
+    |
+    +-- DuckDNS domain + Let's Encrypt certificate
+    |
+Nginx reverse proxy on EC2
     |
     +-- GET  /api/search                    YouTube Data API v3
     +-- GET  /api/videos/{id}/transcript    youtube-transcript-api + Whisper fallback
@@ -53,19 +59,21 @@ User question -> agent decides tools -> similarity search on ChromaDB -> top-5 c
 ## 3. Live Demo Steps
 
 ### Step 1 - Open the app
-For the full transcript/RAG demo, use local:
+For the hosted deployment demo, use:
 
-`http://localhost:3000`
-
-For hosted deployment proof, show EC2:
-
-`http://<EC2_PUBLIC_IP>:3001`
+`https://asktube-ai.duckdns.org`
 
 Backend health:
 
-`http://<EC2_PUBLIC_IP>:8000/health`
+`https://asktube-ai.duckdns.org/health`
+
+Analytics dashboard:
+
+`https://asktube-ai.duckdns.org/analytics`
 
 Point out: cinematic dark UI, search bar, video carousel with demo cards.
+
+Voice search now works on the hosted domain because the app is served through HTTPS. Chrome blocks microphone permissions on raw `http://` EC2 IP URLs.
 
 ### Step 2 - Search
 Type: **`python tutorial for beginners`** and select a duration filter such as **`< 10 min`**.
@@ -108,7 +116,7 @@ Point out: 17 eval cases across 6 categories - answerable questions, refusals, c
 
 Open:
 
-`http://<EC2_PUBLIC_IP>:3001/analytics`
+`https://asktube-ai.duckdns.org/analytics`
 
 Point out:
 - Overview cards: active users, questions, processed videos, session time
@@ -119,7 +127,7 @@ Point out:
 
 Then open:
 
-`http://<EC2_PUBLIC_IP>:8000/metrics`
+`https://asktube-ai.duckdns.org/metrics`
 
 Point out: Prometheus metrics are available for HTTP latency, RAG latency, embeddings, vector search, processing duration, and WebSocket health.
 
@@ -187,7 +195,7 @@ Full details: `docs/youtube_data_strategy.md`.
 | No authentication | The demo has no login or rate limiting - fine for a school project, not for production |
 | Analytics users are anonymous | The dashboard uses generated browser IDs, not real accounts, because the project has no login system |
 | Heuristic evaluator is conservative | Term-overlap groundedness scorer flags paraphrased answers as warnings; LLM evaluator mode would score correctly but costs extra API calls |
-| YouTube blocks many cloud IPs | EC2 proves Docker deployment, but full transcript ingestion may need local demo or a working residential HTTPS proxy endpoint |
+| YouTube blocks many cloud IPs | EC2 proves HTTPS Docker deployment, but full transcript ingestion may need local demo or a working residential HTTPS proxy endpoint |
 | Voice search requires closed Zoom on Windows | Zoom (and other conferencing apps) may claim exclusive mode on the microphone, causing MediaRecorder to capture 0-level audio. Fix: close Zoom, or disable exclusive mode in Windows Sound settings -> Properties -> Advanced |
 
 ---
@@ -203,7 +211,7 @@ Full details: `docs/youtube_data_strategy.md`.
 - PostgreSQL-hosted analytics database for long-running production data
 - Grafana dashboard on top of Prometheus metrics
 - LLM-based evaluator mode (`RAG_EVALUATOR_MODE=llm`)
-- Production polish: custom domain, HTTPS, and a more reliable transcript proxy provider
+- Production polish: paid custom domain, stronger transcript proxy provider, and persistent user accounts
 
 ---
 

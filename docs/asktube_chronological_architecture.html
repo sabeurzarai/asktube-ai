@@ -37,7 +37,7 @@
 <div class="wrap">
 <svg width="1120" height="1720" viewBox="0 0 1120 1720" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" role="img" aria-labelledby="title desc">
 <title id="title">AskTube AI Chronological Process Architecture</title>
-<desc id="desc">A top-to-bottom explanation of how AskTube AI works chronologically, from user search and YouTube API calls through transcript extraction, chunking, vector storage, RAG retrieval, LangChain agent orchestration, analytics capture, and final timestamped answers.</desc>
+<desc id="desc">A top-to-bottom explanation of how AskTube AI works chronologically, from HTTPS domain access and user search through YouTube API calls, transcript extraction, chunking, vector storage, RAG retrieval, LangChain agent orchestration, analytics capture, and final timestamped answers.</desc>
 
 <defs>
   <marker id="arrow" markerWidth="12" markerHeight="10" refX="10" refY="5" orient="auto">
@@ -76,7 +76,7 @@
 
 <rect x="545" y="24" width="535" height="58" rx="10" fill="#263238"/>
 <text x="812" y="48" fill="#ffffff" font-size="14" font-weight="800" text-anchor="middle">HOW TO EXPLAIN IT TO THE TEACHER</text>
-<text x="812" y="69" fill="#cfd8dc" font-size="12" text-anchor="middle">User -> Frontend -> FastAPI -> YouTube/Transcript -> ChromaDB -> LangChain RAG -> Answer + Analytics</text>
+<text x="812" y="69" fill="#cfd8dc" font-size="12" text-anchor="middle">User -> HTTPS DuckDNS/Nginx -> Frontend -> FastAPI -> YouTube/Transcript -> ChromaDB -> RAG -> Answer + Analytics</text>
 
 <!-- Column labels -->
 <text x="86" y="144" fill="#1a237e" font-size="13" font-weight="900" letter-spacing="1.3">USER / UI</text>
@@ -234,12 +234,12 @@
 <!-- Final explanation band -->
 <rect x="42" y="1588" width="1036" height="92" rx="14" fill="#263238" filter="url(#shadow)"/>
 <text x="70" y="1620" fill="#ffffff" font-size="18" font-weight="900">One-sentence explanation</text>
-<text x="70" y="1646" fill="#eceff1" font-size="14">AskTube AI searches YouTube, extracts the selected video's transcript, chunks and embeds it into ChromaDB, retrieves relevant transcript parts, answers with citations, and records analytics for the full journey.</text>
-<text x="70" y="1668" fill="#b0bec5" font-size="12">Key promise: it does not answer from general internet knowledge; it answers from retrieved transcript evidence and exposes /analytics plus /metrics for observability.</text>
+<text x="70" y="1646" fill="#eceff1" font-size="14">AskTube AI is deployed at https://asktube-ai.duckdns.org with Nginx + Let's Encrypt HTTPS, then searches YouTube, extracts transcripts, chunks, embeds, retrieves, answers, and records analytics.</text>
+<text x="70" y="1668" fill="#b0bec5" font-size="12">Key promise: it answers from retrieved transcript evidence, exposes /analytics plus /metrics, and uses HTTPS so browser microphone permissions work in the hosted demo.</text>
 
 <!-- Side notes -->
 <rect x="42" y="122" width="1036" height="1" fill="#d7d0c4"/>
-<text x="42" y="1705" fill="#8d8d8d" font-size="11">Tip for presentation: start at step 1 and walk downward. EC2 proves Docker deployment; local demo is safest for full RAG if YouTube blocks cloud/proxy transcript access.</text>
+<text x="42" y="1705" fill="#8d8d8d" font-size="11">Tip for presentation: start at step 1 and walk downward. EC2 + DuckDNS + HTTPS proves deployment; local remains a fallback if YouTube blocks cloud transcript access.</text>
 </svg>
 </div>
 </body>

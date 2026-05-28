@@ -1,6 +1,6 @@
 # AskTube AI Manual Test Requirements
 
-**Live app for testing:** http://18.157.233.122:3001/
+**Live app for testing:** https://asktube-ai.duckdns.org/
 
 ## Document Purpose
 
@@ -29,9 +29,9 @@ AskTube AI is a cinematic AI-powered YouTube learning platform combining:
 |---|---|
 | Local frontend | `http://localhost:3000` |
 | Local backend | `http://localhost:8000` |
-| EC2 frontend | `http://<EC2_PUBLIC_IP>:3001` when port 3000 is occupied |
-| EC2 backend | `http://<EC2_PUBLIC_IP>:8000` |
-| Analytics dashboard | `http://localhost:3000/analytics` or `http://<EC2_PUBLIC_IP>:3001/analytics` |
+| EC2 frontend | `https://asktube-ai.duckdns.org` through Nginx + Let's Encrypt |
+| EC2 backend | `https://asktube-ai.duckdns.org/api/*` and `https://asktube-ai.duckdns.org/health` |
+| Analytics dashboard | `http://localhost:3000/analytics` or `https://asktube-ai.duckdns.org/analytics` |
 | Prometheus metrics | `GET http://localhost:8000/metrics` |
 | API docs | `http://localhost:8000/docs` |
 | Health check | `GET http://localhost:8000/health` -> `{"status":"ok"}` |

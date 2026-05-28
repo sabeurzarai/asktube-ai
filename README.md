@@ -2,6 +2,8 @@
 
 AI-powered YouTube learning platform. Search for videos, extract transcripts, and chat with the content using RAG (Retrieval-Augmented Generation) with timestamped citations.
 
+**Demo video:** https://youtu.be/hSB3AvbUahY
+
 ---
 
 ## Tech Stack
