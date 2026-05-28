@@ -1,0 +1,207 @@
+AskTube AI - Final Project Requirements
+=======================================
+
+Project title
+-------------
+AskTube AI: Multimodal AI chatbot for YouTube video question answering.
+
+Goal
+----
+Build a deployed AI web application that lets users search YouTube videos, process transcripts, and ask natural language questions about the selected video. Answers must be grounded in retrieved transcript evidence and include timestamp citations.
+
+
+Mandatory Requirements
+----------------------
+
+1. Language model chatbot
+   Status: Implemented
+   Evidence:
+   - FastAPI backend exposes chat endpoints.
+   - GPT-4o-mini is used for answer generation.
+   - Answers are transcript-grounded and cite timestamps.
+
+2. RAG system
+   Status: Implemented
+   Evidence:
+   - Transcript chunks are embedded with OpenAI text-embedding-3-small.
+   - ChromaDB stores and retrieves relevant transcript chunks.
+   - Retrieved context is injected into the answer prompt.
+
+3. Vector database
+   Status: Implemented
+   Evidence:
+   - ChromaDB is used as the vector store.
+   - Video transcript chunks are indexed with metadata and timestamps.
+
+4. Text data processing
+   Status: Implemented
+   Evidence:
+   - YouTube transcripts are fetched.
+   - Transcripts are chunked with timestamp metadata.
+   - Chunks are embedded and stored for retrieval.
+
+5. User interface
+   Status: Implemented
+   Evidence:
+   - Next.js web app.
+   - Search interface, video carousel, processing screen, AI chat, citations, transcript/evidence UI, analytics dashboard.
+
+6. Agents with tools
+   Status: Implemented
+   Evidence:
+   - LangChain StructuredTool pattern is used.
+   - Tools include YouTube search, transcript extraction, chunking, vector storage, context retrieval, answering, notes, quiz, and translation-related capabilities.
+
+7. Memory
+   Status: Implemented
+   Evidence:
+   - Session-based conversation memory supports follow-up questions.
+
+8. Testing and evaluation
+   Status: Implemented
+   Evidence:
+   - Backend pytest suite.
+   - Frontend tests.
+   - Manual test requirements documented.
+   - RAG behavior is evaluated with answerable, refusal, citation, summary, and hallucination-prevention cases.
+
+9. Deployment
+   Status: Implemented
+   Evidence:
+   - Docker and Docker Compose are used.
+   - App is deployed on AWS EC2.
+   - Nginx reverse proxy, DuckDNS domain, and Let's Encrypt HTTPS are configured.
+   - Live app: https://asktube-ai.duckdns.org/
+
+
+Optional / Advanced Features
+----------------------------
+
+1. Voice input
+   Status: Implemented
+   Evidence:
+   - Browser Web Speech API is used first.
+   - Whisper fallback is available through backend speech transcription.
+
+2. Whisper fallback
+   Status: Implemented
+   Evidence:
+   - Whisper is used when browser speech recognition or transcript availability requires fallback handling.
+
+3. Text-to-speech
+   Status: Implemented
+   Evidence:
+   - Browser speech synthesis is used for assistant-style voice output.
+
+4. Analytics and observability
+   Status: Implemented
+   Evidence:
+   - Analytics events are collected.
+   - Dashboard available at /analytics.
+   - Prometheus metrics available at /metrics.
+   - LangSmith tracing is supported when enabled.
+
+5. Production deployment polish
+   Status: Implemented
+   Evidence:
+   - HTTPS domain enables microphone permissions in Chrome.
+   - EC2 deployment uses Nginx to route frontend, backend API, health checks, and metrics.
+   - Proxy support is included for YouTube transcript extraction from cloud infrastructure.
+
+
+Main User Flow
+--------------
+
+1. User searches for a YouTube topic by text or voice.
+2. App returns YouTube search results with metadata and thumbnails.
+3. User selects one video.
+4. Backend extracts transcript or uses fallback handling.
+5. Transcript is chunked, embedded, and stored in ChromaDB.
+6. User asks a question.
+7. RAG retrieves relevant transcript chunks.
+8. LLM generates an answer using only retrieved evidence.
+9. UI displays answer with clickable timestamp citations.
+
+
+Architecture Summary
+--------------------
+
+Frontend:
+- Next.js 14
+- TypeScript
+- TailwindCSS
+- Framer Motion
+- Three.js / React Three Fiber
+- Recharts analytics dashboard
+
+Backend:
+- FastAPI
+- Python 3.12
+- LangChain tools and agent service
+- OpenAI GPT-4o-mini
+- OpenAI text-embedding-3-small
+- Whisper fallback
+- ChromaDB
+- SQLAlchemy analytics storage
+- Prometheus metrics
+- LangSmith optional tracing
+
+Infrastructure:
+- Docker
+- Docker Compose
+- AWS EC2
+- Nginx
+- DuckDNS
+- Let's Encrypt HTTPS
+
+
+Evaluation Criteria Mapping
+---------------------------
+
+Accuracy:
+- Answers are grounded in transcript chunks.
+- Timestamp citations let users verify the answer.
+- Off-topic questions should be refused if the transcript does not contain the answer.
+
+Usability:
+- Search, video selection, processing, and chat are integrated in one web UI.
+- Voice search and cinematic UI improve interaction quality.
+- Processing states and error states are visible to the user.
+
+Responsiveness:
+- Backend tracks request latency and RAG latency.
+- Analytics dashboard shows pipeline and UX metrics.
+
+Documentation:
+- README.md explains setup and deployment.
+- DEPLOY.md explains deployment.
+- docs/analytics_observability.md explains analytics.
+- docs/youtube_data_strategy.md explains YouTube transcript strategy.
+- docs/manual_test_requirements.md explains manual verification.
+- docs/AskTube_AI_Presentation.pptx contains presentation slides and speaker notes.
+
+
+How To Verify
+-------------
+
+Local Docker:
+1. Copy .env.example to .env.
+2. Add required API keys.
+3. Run docker-compose up -d --build.
+4. Open http://localhost:3000.
+
+EC2 Production:
+1. Open https://asktube-ai.duckdns.org/.
+2. Search for a topic.
+3. Select and process a video.
+4. Ask a question.
+5. Verify that answers include timestamp citations.
+6. Open /analytics to inspect product and AI metrics.
+7. Open /metrics to inspect Prometheus metrics.
+
+
+Known Production Note
+---------------------
+
+YouTube often blocks transcript requests from cloud provider IP addresses such as AWS EC2. AskTube AI includes Webshare residential proxy support for production deployments. If transcript extraction fails on EC2, configure WEBSHARE_PROXY_URL in the .env file.
+
