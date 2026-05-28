@@ -13,7 +13,7 @@ AI-powered YouTube learning platform. Search for videos, extract transcripts, an
 | AI | OpenAI GPT-4o-mini, text-embedding-3-small, Whisper |
 | Observability | AskTube analytics dashboard, Prometheus metrics, LangSmith tracing |
 | Data | YouTube Data API v3, youtube-transcript-api 1.2.4 |
-| Infra | Docker, Docker Compose, AWS EC2, optional Render |
+| Infra | Docker, Docker Compose, AWS EC2, Nginx, DuckDNS, Let’s Encrypt HTTPS, optional Render |
 
 ---
 
@@ -68,17 +68,17 @@ Open **http://localhost:3000**.
 
 ## Deploying to AWS EC2
 
-The current hosted demo runs the three Docker services on a single EC2 instance:
+The current hosted demo runs the three Docker services on a single EC2 instance behind Nginx and HTTPS:
 
 | Service | Public access |
 |---------|---------------|
-| Frontend | `http://<EC2_PUBLIC_IP>:3001` |
-| Backend | `http://<EC2_PUBLIC_IP>:8000` |
-| Analytics dashboard | `http://<EC2_PUBLIC_IP>:3001/analytics` |
-| Prometheus metrics | `http://<EC2_PUBLIC_IP>:8000/metrics` |
+| Frontend | `https://asktube-ai.duckdns.org` |
+| Backend API | `https://asktube-ai.duckdns.org/api/*` |
+| Analytics dashboard | `https://asktube-ai.duckdns.org/analytics` |
+| Prometheus metrics | `https://asktube-ai.duckdns.org/metrics` |
 | ChromaDB | internal Docker service, optionally exposed on `8001` for debugging |
 
-**Live demo:** http://18.157.233.122:3001/
+**Live demo:** https://asktube-ai.duckdns.org/
 
 Quick deployment flow:
 
@@ -93,12 +93,20 @@ docker-compose up -d --build
 For EC2, set:
 
 ```dotenv
-NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP>:8000
-NEXT_PUBLIC_WS_URL=ws://<EC2_PUBLIC_IP>:8000
-CORS_ORIGINS=http://<EC2_PUBLIC_IP>:3001,http://localhost:3000
+NEXT_PUBLIC_API_URL=https://asktube-ai.duckdns.org
+NEXT_PUBLIC_WS_URL=wss://asktube-ai.duckdns.org
+CORS_ORIGINS=https://asktube-ai.duckdns.org,http://localhost:3000
 ```
 
-If port `3000` is already occupied, map the frontend as `3001:3000` in `docker-compose.yml` and open port `3001` in the EC2 security group.
+The public browser path goes through Nginx on ports `80` and `443`. Keep Docker ports `3001`, `8000`, and `8001` private to the instance unless you are temporarily debugging.
+
+The production access layer is:
+
+```text
+Browser -> DuckDNS domain -> Let’s Encrypt HTTPS -> Nginx -> Next.js / FastAPI / ChromaDB
+```
+
+Voice search requires HTTPS in Chrome. The old raw-IP URL works for basic text testing, but microphone permission is blocked on insecure `http://` IP addresses.
 
 > Note: YouTube blocks transcript extraction from AWS/cloud IPs. The project includes Webshare residential proxy support. Set `WEBSHARE_PROXY_URL=http://<user>:<pass>@p.webshare.io:80` in your `.env` to route transcript requests through the proxy. This is required for production EC2 deployments.
 
@@ -339,13 +347,15 @@ The project ships three Docker containers orchestrated via Docker Compose:
 
 Analytics persistence defaults to SQLite in the backend data volume for local and EC2 simplicity. Production deployments can switch to PostgreSQL by setting `ANALYTICS_DATABASE_URL=postgresql+asyncpg://...`.
 
-The project is deployed with Docker Compose on **AWS EC2** for the hosted demo and remains Render-compatible through the service-level Dockerfiles.
+The project is deployed with Docker Compose on **AWS EC2** for the hosted demo and remains Render-compatible through the service-level Dockerfiles. The EC2 demo is served at `https://asktube-ai.duckdns.org` through DuckDNS, Nginx, and a Let’s Encrypt certificate, so browser microphone permissions work on the hosted app.
 
 ### YouTube Transcript API Usage
 `youtube-transcript-api` (v1.2.4) is the **primary** and **preferred** method for extracting text from YouTube videos. It fetches publicly available auto-generated or manually uploaded captions without downloading any audio or video. See [YouTube Data Strategy](docs/youtube_data_strategy.md) for full details.
 
 ### Optional Voice Input
 The frontend search console includes a microphone button that tries the browser's **Web Speech API** (`webkitSpeechRecognition`) first. If the Web Speech API fails with a network error, the frontend automatically falls back to recording audio via **MediaRecorder** and sending the file to `POST /api/speech/transcribe`, where OpenAI Whisper performs server-side transcription. A prompt of `"YouTube search query:"` guides the model, and responses shorter than 1 500 bytes are discarded as silence. A hallucination filter discards non-query outputs.
+
+Browser microphone access requires a secure origin. Use `https://asktube-ai.duckdns.org` for the hosted demo or `http://localhost:3000` for local development; Chrome blocks microphone permission on plain `http://` public IP URLs.
 
 ---
 

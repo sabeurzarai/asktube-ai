@@ -137,7 +137,7 @@ KEY MESSAGE: EC2 proves deployment; local demo proves full transcript ingestion.
 
 It also includes optional features: voice input, Whisper fallback, streaming, TTS, 3D assistant, analytics, Prometheus metrics, and LangSmith tracing.
 
-The main future improvements: persistent user accounts, multi-video comparison, HTTPS with a custom domain, and a stronger production transcript proxy.
+The main future improvements: persistent user accounts, multi-video comparison, a paid custom domain, and a stronger production transcript proxy.
 
 FINAL LINE: AskTube AI makes YouTube videos learnable by conversation, while keeping the answer grounded in the original transcript.""",
 ]

@@ -75,7 +75,7 @@ The backend is FastAPI. It exposes routes for search, transcripts, chunking, vec
 
 The AI and data layer uses LangChain, OpenAI models, ChromaDB, Whisper fallback, and optional LangSmith tracing.
 
-Everything runs with Docker Compose: frontend, backend, and ChromaDB.
+Everything runs with Docker Compose: frontend, backend, and ChromaDB. For the hosted demo, the containers run on AWS EC2 behind Nginx, a DuckDNS domain, and a Let's Encrypt HTTPS certificate.
 
 There is also an observability layer: analytics events, RAG metrics, pipeline metrics, Prometheus metrics, and an `/analytics` dashboard.
 
@@ -141,6 +141,8 @@ I also added optional features to make the project feel more complete.
 
 Voice search uses the browser Web Speech API first. If that fails, the app can record audio and send it to the backend for Whisper transcription.
 
+In the deployed version, HTTPS is important because Chrome only allows microphone permissions on secure origins. That is why the demo runs at `https://asktube-ai.duckdns.org` instead of the raw EC2 IP address.
+
 There is also text-to-speech for AI answers, a 3D assistant scene, animated loading states, responsive layouts, and accessibility improvements like labels, focus states, and reduced-motion support.
 
 **Key message:** The optional features support the learning experience, but the core is still RAG.
@@ -183,13 +185,15 @@ LangSmith tracing can also be enabled to inspect latency, context, tool calls, a
 
 For the demo, I will show the main flow: search, prepare, ask, and verify.
 
-I can show the EC2 deployment to prove the app runs with Docker on a server. But for the full transcript/RAG demo, local Docker is more reliable because YouTube often blocks transcript requests from cloud IP addresses.
+The public demo runs at `https://asktube-ai.duckdns.org`. It uses DuckDNS for the domain, Nginx as a reverse proxy, and Let's Encrypt for HTTPS, so voice search can request microphone permission in Chrome.
+
+I can show the EC2 deployment to prove the app runs with Docker on a server. If YouTube blocks transcript requests from cloud IP addresses, I can also explain or run the full transcript/RAG flow locally.
 
 This is a known limitation of YouTube transcript access, not a problem with the RAG pipeline. I documented the issue and added Webshare proxy support, but the proxy must support HTTPS access to YouTube.
 
 During the demo, I want to emphasize trust: every answer should connect back to the transcript and timestamps.
 
-**Key message:** EC2 proves deployment; local demo proves full transcript ingestion if YouTube blocks cloud IPs.
+**Key message:** EC2 proves production deployment with HTTPS; local demo remains a fallback if YouTube blocks cloud transcript access.
 
 ---
 
@@ -199,9 +203,9 @@ During the demo, I want to emphasize trust: every answer should connect back to 
 
 To summarize, AskTube AI meets the main project requirements: LLM chatbot, tools, memory, vector database, text processing, UI, tests, evaluation, and deployment.
 
-It also includes optional features like voice input, Whisper fallback, streaming, TTS, a 3D assistant, analytics, Prometheus metrics, and LangSmith tracing.
+It also includes optional features like voice input, Whisper fallback, streaming, TTS, a 3D assistant, analytics, Prometheus metrics, LangSmith tracing, and HTTPS deployment.
 
-The main future improvements would be persistent user accounts, multi-video comparison, HTTPS with a custom domain, and a stronger production transcript proxy.
+The main future improvements would be persistent user accounts, multi-video comparison, a custom paid domain, and a stronger production transcript proxy.
 
 **Final sentence:**
 

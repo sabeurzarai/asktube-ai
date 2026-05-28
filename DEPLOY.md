@@ -2,7 +2,13 @@
 
 This guide deploys the full stack (Next.js frontend, FastAPI backend, ChromaDB, and
 AskTube analytics/observability) on a single EC2 instance behind an Nginx reverse
-proxy, with optional HTTPS via Certbot.
+proxy, with HTTPS via DuckDNS and Certbot.
+
+Current public demo:
+
+```text
+https://asktube-ai.duckdns.org
+```
 
 ---
 
@@ -94,12 +100,12 @@ Required values to set:
 YOUTUBE_API_KEY=<your-youtube-data-api-v3-key>
 OPENAI_API_KEY=<your-openai-api-key>
 
-# Frontend build-time API URLs - set to your EC2 public IP or domain
-NEXT_PUBLIC_API_URL=http://<EC2_PUBLIC_IP_OR_DOMAIN>:8000
-NEXT_PUBLIC_WS_URL=ws://<EC2_PUBLIC_IP_OR_DOMAIN>:8000
+# Frontend build-time API URLs - use the HTTPS domain in production
+NEXT_PUBLIC_API_URL=https://asktube-ai.duckdns.org
+NEXT_PUBLIC_WS_URL=wss://asktube-ai.duckdns.org
 
 # CORS - must match the URL your browser uses to reach the app
-CORS_ORIGINS=http://<EC2_PUBLIC_IP_OR_DOMAIN>:3001,http://localhost:3000
+CORS_ORIGINS=https://asktube-ai.duckdns.org,http://localhost:3000
 
 # ChromaDB — Docker service name, do not change
 CHROMA_USE_HTTP=true
@@ -142,37 +148,42 @@ Services will be reachable at:
 
 > You will need to temporarily open ports 3000 or 3001 and 8000 in the security group for this.
 
-### With Nginx (recommended)
+### With host Nginx + HTTPS (recommended)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d --build
+docker compose up -d --build
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
-The app is now reachable at `http://<EC2_PUBLIC_IP>` on port 80.
+The live app is reachable at `https://asktube-ai.duckdns.org` after the Nginx and Certbot steps below.
 
 ---
 
 ## 6. Nginx Reverse Proxy
 
-The Nginx config is at `nginx/asktube.conf`. It proxies:
+The live EC2 deployment uses host Nginx at `/etc/nginx/sites-available/asktube-ai`. It proxies:
 
 | Path | Target |
 |---|---|
-| `/api/*` | FastAPI backend (port 8000) |
-| `/api/metrics` | FastAPI Prometheus metrics (port 8000) |
-| `/*` | Next.js frontend (port 3000) |
+| `/api/*` | FastAPI backend on `127.0.0.1:8000` |
+| `/metrics` | FastAPI Prometheus metrics on `127.0.0.1:8000` |
+| `/health` | FastAPI health route on `127.0.0.1:8000` |
+| `/*` | Next.js frontend on `127.0.0.1:3001` |
 
 WebSocket upgrades (`/api/chat/stream`, `/api/videos/*/ingest/stream`) are handled automatically via the `Upgrade` / `Connection` headers.
 
-No changes are needed unless you add a custom domain — in that case update `server_name`:
+The active domain config is:
 
 ```nginx
-server_name yourdomain.com www.yourdomain.com;
+server_name asktube-ai.duckdns.org;
 ```
+
+If another Nginx site is enabled, remove its symlink from `/etc/nginx/sites-enabled/` so it does not capture port 80.
 
 ---
 
-## 7. Optional — HTTPS with Certbot
+## 7. HTTPS with Certbot
 
 > Requires a real domain pointed at your EC2 IP via an A record.
 
@@ -273,6 +284,65 @@ docker compose -f docker-compose.yml -f docker-compose.nginx.yml restart nginx
 ```
 
 Certificates auto-renew every 12 hours via the `certbot` sidecar container.
+
+### Current live demo setup
+
+The actual hosted AskTube demo uses host-level Nginx and Certbot instead of the Docker Nginx sidecar:
+
+```text
+https://asktube-ai.duckdns.org -> EC2 Elastic IP 18.157.233.122
+```
+
+The EC2 security group must allow public `80` and `443`. Docker still runs the frontend on host port `3001` and the backend on host port `8000`, but these are hidden behind Nginx:
+
+```nginx
+server {
+    listen 80;
+    server_name asktube-ai.duckdns.org;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location /metrics {
+        proxy_pass http://127.0.0.1:8000/metrics;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+    }
+}
+```
+
+Issue the live certificate with:
+
+```bash
+sudo certbot --nginx -d asktube-ai.duckdns.org
+```
+
+After HTTPS is enabled, rebuild the frontend with:
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://asktube-ai.duckdns.org
+NEXT_PUBLIC_WS_URL=wss://asktube-ai.duckdns.org
+CORS_ORIGINS=https://asktube-ai.duckdns.org,http://localhost:3000
+```
+
+Chrome microphone permissions require this secure origin. Plain `http://<EC2_IP>:3001` works for text testing but cannot enable microphone access.
 
 ---
 
@@ -431,8 +501,8 @@ The deployed app exposes two observability surfaces:
 
 | Surface | URL |
 |---|---|
-| Analytics dashboard | `http://<EC2_PUBLIC_IP>:3001/analytics` or `https://yourdomain.com/analytics` |
-| Prometheus metrics | Direct backend: `http://<EC2_PUBLIC_IP>:8000/metrics`; Nginx: `https://yourdomain.com/api/metrics` |
+| Analytics dashboard | `https://asktube-ai.duckdns.org/analytics` |
+| Prometheus metrics | `https://asktube-ai.duckdns.org/metrics` or local backend `http://localhost:8000/metrics` |
 
 The dashboard stores product, RAG, pipeline, UX, and business metrics in the analytics database.
 Local and EC2 Docker deployments default to SQLite in the backend data volume:
@@ -471,7 +541,7 @@ docker compose exec backend env | grep YOUTUBE
 ```
 
 ### Frontend shows a blank page or loads at the bottom
-- Confirm the backend is reachable from the browser: `http://<EC2_PUBLIC_IP>:8000/health`.
+- Confirm the backend is reachable through Nginx: `https://asktube-ai.duckdns.org/health`.
 - The frontend has a runtime fallback that replaces a baked `localhost` API URL with the current public host, but production should still set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` correctly.
 - If you change frontend build-time variables, rebuild the frontend image:
   ```bash

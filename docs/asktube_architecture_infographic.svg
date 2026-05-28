@@ -43,7 +43,7 @@
 
 <text x="18" y="30" fill="#1a1a2e" font-size="24" font-weight="900">ASKTUBE AI</text>
 <text x="18" y="55" fill="#1a1a2e" font-size="24" font-weight="900">ARCHITECTURE</text>
-<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">CURRENT IMPLEMENTATION MAP - DOCKER + EC2 + ANALYTICS</text>
+<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">CURRENT IMPLEMENTATION MAP - HTTPS + DOCKER + EC2 + ANALYTICS</text>
 
 <!-- User input -->
 <circle cx="430" cy="96" r="17" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>
@@ -197,9 +197,10 @@
 <rect x="854" y="704" width="254" height="99" rx="14" fill="#eceff1" stroke="#546e7a" stroke-width="2.5"/>
 <text x="868" y="729" fill="#263238" font-size="16" font-weight="900">DOCKER / DEPLOYMENT</text>
 <line x1="868" y1="738" x2="1094" y2="738" stroke="#78909c" stroke-width="1" stroke-dasharray="4,3"/>
-<text x="868" y="757" fill="#455a64" font-size="11">frontend Dockerfile + backend Dockerfile</text>
-<text x="868" y="774" fill="#455a64" font-size="11">docker-compose with ChromaDB service</text>
-<text x="868" y="791" fill="#455a64" font-size="11">analytics DB + EC2 env/proxy config</text>
+<text x="868" y="757" fill="#455a64" font-size="11">DuckDNS domain + Let's Encrypt HTTPS</text>
+<text x="868" y="774" fill="#455a64" font-size="11">host Nginx reverse proxy to Docker services</text>
+<text x="868" y="791" fill="#455a64" font-size="11">frontend/backend/ChromaDB via docker-compose</text>
+<text x="868" y="808" fill="#455a64" font-size="11">analytics DB + EC2 env/proxy config</text>
 
 <!-- Arrows -->
 <path d="M 644 136 C 610 148, 575 155, 542 180" stroke="#d81b60" stroke-width="2.5" fill="none" marker-end="url(#arrowPink)"/>
