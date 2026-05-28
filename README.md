@@ -11,7 +11,7 @@ AI-powered YouTube learning platform. Search for videos, extract transcripts, an
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, TypeScript, TailwindCSS, Framer Motion, Three.js |
-| Backend | FastAPI, Python 3.12, LangChain, ChromaDB, SQLAlchemy async |
+| Backend | FastAPI, Python 3.12, LangChain, langchain-community, ChromaDB, SQLAlchemy async |
 | AI | OpenAI GPT-4o-mini, text-embedding-3-small, Whisper |
 | Observability | AskTube analytics dashboard, Prometheus metrics, LangSmith tracing |
 | Data | YouTube Data API v3, youtube-transcript-api 1.2.4 |
@@ -330,7 +330,7 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 `transcript_service.py` fetches captions via `youtube-transcript-api` and cleans the raw segments. `chunking_service.py` splits the cleaned text into overlapping chunks using LangChain's splitter, preserving timestamp metadata on each chunk. This pipeline converts raw YouTube captions into retrieval-ready documents.
 
 ### Testing and Evaluation
-- **98 pytest tests** covering services, routes, tools, speech, WebSocket ingestion, and the agent pipeline.
+- **119 pytest tests** covering services, routes, tools, speech, WebSocket ingestion, and the agent pipeline.
 - **Evaluation dataset**: `tests/fixtures/rag_eval_cases.json` - 17 hand-crafted RAG cases with expected answers and metadata.
 - **CLI runner**: `scripts/run_evaluation.py` executes the evaluation dataset against the live backend and reports per-case scores.
 - **Inline heuristic evaluation**: `RAG_EVALUATOR_MODE=heuristic` scores each RAG response at inference time (source coverage, answer length, hallucination-risk flag) and includes scores in the API response.
@@ -339,7 +339,7 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 ### Analytics and Observability
 AskTube AI includes a production-style analytics system. The frontend tracks product and UX events such as search submissions, video selections, carousel movement, voice search, processing state, chat messages, prompt clicks, transcript opens, timestamp clicks, and 3D assistant interactions. The backend records HTTP latency, search events, video processing metrics, embedding/vector timings, RAG latency, citation coverage, tool execution, chat metrics, and WebSocket failures.
 
-Analytics are stored in SQLAlchemy tables (`analytics_events`, `video_metrics`, `chat_metrics`, `rag_metrics`) and displayed in the Next.js dashboard at `/analytics`. Prometheus-format operational metrics are exposed at `/metrics`. LangSmith remains available for chain and tool tracing. See [Analytics and Observability](docs/analytics_observability.md).
+Analytics are stored in SQLAlchemy tables (`analytics_events`, `video_metrics`, `chat_metrics`, `rag_metrics`) and displayed in the Next.js dashboard at `/analytics`. Every metric card and chart on the dashboard includes an inline tooltip explaining what the metric measures and why it matters. Prometheus-format operational metrics are exposed at `/metrics`. LangSmith remains available for chain and tool tracing. See [Analytics and Observability](docs/analytics_observability.md).
 
 ### Deployment
 The project ships three Docker containers orchestrated via Docker Compose:
