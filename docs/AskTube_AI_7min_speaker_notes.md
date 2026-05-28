@@ -169,7 +169,7 @@ There is a dashboard at `/analytics`, and Prometheus metrics at `/metrics`.
 
 **Say this:**
 
-For testing, the backend has 98 pytest tests. They cover routes, services, tools, WebSocket ingestion, speech transcription, memory, vector storage, and RAG behavior.
+For testing, the project has more than 100 automated checks across frontend and backend. They cover routes, services, tools, WebSocket ingestion, speech transcription, analytics, memory, vector storage, and RAG behavior.
 
 I also created a RAG evaluation dataset with 17 cases. These test answerable questions, unrelated questions that should be refused, citation accuracy, summaries, memory, and hallucination prevention.
 
@@ -187,9 +187,11 @@ For the demo, I will show the main flow: search, prepare, ask, and verify.
 
 The public demo runs at `https://asktube-ai.duckdns.org`. It uses DuckDNS for the domain, Nginx as a reverse proxy, and Let's Encrypt for HTTPS, so voice search can request microphone permission in Chrome.
 
+My live demo path is short: search, prepare, ask, and verify citations. If there is time, I can also show a follow-up question, refusal behavior, and the analytics dashboard.
+
 I can show the EC2 deployment to prove the app runs with Docker on a server. If YouTube blocks transcript requests from cloud IP addresses, I can also explain or run the full transcript/RAG flow locally.
 
-This is a known limitation of YouTube transcript access, not a problem with the RAG pipeline. I documented the issue and added Webshare proxy support, but the proxy must support HTTPS access to YouTube.
+This is a known limitation of YouTube transcript access, not a problem with the RAG pipeline. I documented the issue and added residential proxy support for production deployments.
 
 During the demo, I want to emphasize trust: every answer should connect back to the transcript and timestamps.
 
@@ -233,4 +235,4 @@ The normal flow does not download full YouTube videos. It first tries public cap
 
 Say:
 
-The Docker app is deployed on EC2, and the frontend and backend are running. The problem is that YouTube often blocks transcript requests from cloud-provider IP ranges. I added residential proxy support and documented it, but for a reliable live demo I can run the full transcript/RAG flow locally.
+The Docker app is deployed on EC2 behind HTTPS, and the frontend and backend are running. The problem is that YouTube often blocks transcript requests from cloud-provider IP ranges. I added residential proxy support and documented it, but for a reliable live demo I can run the full transcript/RAG flow locally if needed.
