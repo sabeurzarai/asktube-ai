@@ -201,9 +201,14 @@ Render runs each service as a separate Docker container. You need three services
 | `CHROMA_HOST` | Docker/prod | ChromaDB hostname |
 | `CHROMA_PORT` | Docker/prod | ChromaDB port (usually `8000`) |
 | `CHROMA_PERSIST_DIR` | Local only | Path for embedded ChromaDB (default `./chroma_data`) |
-| `CHAT_MODEL` | No | Default: `gpt-4o-mini` |
+| `CHAT_MODEL` | No | Default: `gpt-4o-mini` (used when `LLM_PROVIDER=openai`) |
 | `EMBEDDING_MODEL` | No | Default: `text-embedding-3-small` |
 | `WHISPER_MODEL` | No | Default: `whisper-1` |
+| `LLM_PROVIDER` | No | `openai` (default) or `nvidia` — chat generation only |
+| `NVIDIA_API_KEY` | If `LLM_PROVIDER=nvidia` | Key from https://build.nvidia.com |
+| `NVIDIA_BASE_URL` | No | Default: `https://integrate.api.nvidia.com/v1` |
+| `NVIDIA_CHAT_MODEL` | No | Default: `moonshotai/kimi-k2.6` |
+| `NVIDIA_TOOL_CALLING` | No | Default: `true`. Set `false` to make the agent fall back to plain RAG |
 | `LANGSMITH_TRACING` | No | `true` to enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | If tracing | LangSmith API key |
 | `ANALYTICS_ENABLED` | No | Enable product, RAG, pipeline, UX, and business analytics |
@@ -361,6 +366,33 @@ Browser microphone access requires a secure origin. Use `https://asktube-ai.duck
 
 ---
 
+### Optional: NVIDIA chat provider (NIM)
+
+AskTube AI defaults to OpenAI for chat generation. You can optionally route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). This swaps the chat model while leaving embeddings and Whisper on OpenAI, so existing ChromaDB collections and citations keep working unchanged.
+
+1. Get a free key at **https://build.nvidia.com** (free endpoints are rate-limited — fine for demos, not production traffic).
+2. In your `.env`, set:
+   ```dotenv
+   LLM_PROVIDER=nvidia
+   NVIDIA_API_KEY=<your build.nvidia.com key>
+   # Optional overrides (defaults shown):
+   # NVIDIA_CHAT_MODEL=moonshotai/kimi-k2.6
+   # NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+   ```
+   `OPENAI_API_KEY` is **still required** (embeddings use `text-embedding-3-small`, Whisper uses `whisper-1`).
+3. Restart the backend:
+   ```bash
+   docker compose up -d --build backend
+   ```
+
+**Model notes.** Any model on build.nvidia.com tagged "Tool Use" works. Recommended default: `moonshotai/kimi-k2.6`. Faster alternative: `deepseek-ai/deepseek-v4-flash`; newest flagship: `z-ai/glm-5.2`.
+
+**Tool calling.** The agent relies on tool calling. If your chosen model's tool calling misbehaves, set `NVIDIA_TOOL_CALLING=false` — the agent then skips the tool pipeline and answers via the existing transcript-grounded RAG path (citations preserved, `tool_steps_used` empty). Set it back to `true` for the full agent.
+
+To return to OpenAI, unset `LLM_PROVIDER` (or set `LLM_PROVIDER=openai`) and restart.
+
+---
+
 ### YouTube Copyright and Data Handling
 
 AskTube AI is built for academic and educational use. Key commitments:
@@ -378,6 +410,9 @@ Set `YOUTUBE_API_KEY` in your `.env` or Render environment variables.
 
 **"Incorrect API key" (OpenAI 401)**
 Your `OPENAI_API_KEY` is invalid or expired. Generate a new one at [platform.openai.com](https://platform.openai.com/api-keys).
+
+**"NVIDIA_API_KEY is required when LLM_PROVIDER=nvidia"**
+You set `LLM_PROVIDER=nvidia` but didn't provide `NVIDIA_API_KEY`. Get a free key at [build.nvidia.com](https://build.nvidia.com) and add it to `.env`, or switch back with `LLM_PROVIDER=openai`.
 
 **"Unable to connect to ChromaDB"**
 - Local dev: set `CHROMA_USE_HTTP=false` (uses embedded SQLite, no server needed)

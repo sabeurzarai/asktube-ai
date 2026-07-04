@@ -13,6 +13,22 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     whisper_model: str = Field(default="whisper-1", alias="WHISPER_MODEL")
     chat_model: str = Field(default="gpt-4o-mini", alias="CHAT_MODEL")
+    # ── Chat model provider ───────────────────────────────────────────────────
+    # "openai" (default) or "nvidia". NVIDIA mode replaces CHAT generation only;
+    # embeddings + Whisper always use OpenAI (OPENAI_API_KEY stays required).
+    llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
+    nvidia_api_key: str | None = Field(default=None, alias="NVIDIA_API_KEY")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        alias="NVIDIA_BASE_URL",
+    )
+    nvidia_chat_model: str = Field(
+        default="moonshotai/kimi-k2.6",
+        alias="NVIDIA_CHAT_MODEL",
+    )
+    # Set false if the chosen NVIDIA model's tool calling misbehaves — the agent
+    # then falls back to plain RAG instead of bind_tools.
+    nvidia_tool_calling: bool = Field(default=True, alias="NVIDIA_TOOL_CALLING")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
     chunk_max_chars: int = Field(default=1200, alias="CHUNK_MAX_CHARS")
     chunk_overlap_segments: int = Field(default=1, alias="CHUNK_OVERLAP_SEGMENTS")

@@ -130,6 +130,28 @@ ANALYTICS_DATABASE_URL=sqlite+aiosqlite:///./data/analytics.db
 
 > **Never commit `.env` to git.** It is already in `.gitignore`.
 
+### Optional: NVIDIA chat provider (NIM)
+
+You can route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). Embeddings (`text-embedding-3-small`) and Whisper stay on OpenAI, so existing ChromaDB collections and citations are unaffected. Append to your `.env`:
+
+```dotenv
+# Get a free key at https://build.nvidia.com (rate-limited; fine for demos).
+LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=<your-build.nvidia.com-key>
+# Optional (defaults shown):
+# NVIDIA_CHAT_MODEL=moonshotai/kimi-k2.6
+# NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+# NVIDIA_TOOL_CALLING=true   # set false to fall back to plain RAG if tool calling misbehaves
+```
+
+`OPENAI_API_KEY` is **still required** for embeddings and Whisper. Any build.nvidia.com model tagged "Tool Use" works; recommended default is `moonshotai/kimi-k2.6`. Rebuild the backend after changing the provider:
+
+```bash
+docker compose up -d --build backend
+```
+
+To return to OpenAI, set `LLM_PROVIDER=openai` (or unset it) and rebuild.
+
 ---
 
 ## 5. Build and Start the Stack
@@ -293,7 +315,9 @@ The actual hosted AskTube demo uses host-level Nginx and Certbot instead of the 
 https://asktube-ai.duckdns.org -> EC2 Elastic IP 18.157.233.122
 ```
 
-The EC2 security group must allow public `80` and `443`. Docker still runs the frontend on host port `3001` and the backend on host port `8000`, but these are hidden behind Nginx:
+The EC2 security group must allow public `80` and `443`. On the live EC2 instance, Docker maps the frontend to host port `3001` (a local override — `ports: ["3001:3000"]`) and the backend to host port `8000`, both hidden behind Nginx.
+
+> **Port note:** the repository's `docker-compose.yml` maps the frontend to host port `3000`, not `3001`. If you deploy from a clean checkout without that override, change `proxy_pass http://127.0.0.1:3001;` below to `proxy_pass http://127.0.0.1:3000;` — otherwise Nginx returns **502 Bad Gateway**.
 
 ```nginx
 server {

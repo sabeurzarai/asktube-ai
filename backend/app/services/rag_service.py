@@ -1,7 +1,6 @@
 from collections.abc import AsyncIterator
 import time
 
-from fastapi import HTTPException, status
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langsmith import traceable
@@ -12,6 +11,7 @@ from app.analytics.schemas import ChatMetricCreate, RAGMetricCreate
 from app.analytics.service import get_analytics_service
 from app.schemas.rag import ChatMessage, RAGChatResponse, RAGStreamEvent, TimestampCitation
 from app.schemas.vectorstore import VectorSearchResult
+from app.services.llm_provider import create_chat_model, require_chat_credentials
 from app.services.memory_service import ConversationMemoryService, memory_service
 from app.services.vectorstore_service import ChromaVectorStoreService, get_vectorstore_service
 
@@ -239,11 +239,7 @@ class RAGService:
         session_id: str | None,
         top_k: int,
     ) -> tuple[str, list[VectorSearchResult]]:
-        if not self.config.openai_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="OPENAI_API_KEY is required for RAG answers.",
-            )
+        require_chat_credentials(self.config)
 
         active_session_id = session_id or self.memory.create_session_id()
         retrieved_context = await self.vectorstore.similarity_search(
@@ -255,12 +251,9 @@ class RAGService:
         return active_session_id, retrieved_context
 
     def create_chat_model(self, streaming: bool) -> ChatOpenAI:
-        return ChatOpenAI(
-            model=self.config.chat_model,
-            api_key=self.config.openai_api_key,
-            temperature=0.1,
-            streaming=streaming,
-        )
+        # Delegate to the shared factory so chat-model construction lives in
+        # exactly one place (supports OpenAI and NVIDIA providers).
+        return create_chat_model(self.config, streaming=streaming, temperature=0.1)
 
     async def _record_rag_metrics(
         self,

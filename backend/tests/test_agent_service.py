@@ -83,7 +83,7 @@ def test_agent_records_tool_steps_used() -> None:
         AIMessage(content="Done"),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=None))
 
@@ -111,7 +111,7 @@ def test_agent_records_multiple_tool_steps_in_order() -> None:
         AIMessage(content="Done"),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=None))
 
@@ -135,7 +135,7 @@ def test_agent_extracts_citations_from_answer_question_result() -> None:
         AIMessage(content="Done"),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=None))
 
@@ -157,7 +157,7 @@ def test_agent_returns_answer_from_answer_question_tool() -> None:
         AIMessage(content="Done"),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=None))
 
@@ -174,7 +174,7 @@ def test_agent_falls_back_to_ai_message_content_when_no_answer_question() -> Non
         AIMessage(content="Here are some results for you."),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("Find Python videos", video_id=None, session_id=None))
 
@@ -196,7 +196,7 @@ def test_agent_appends_memory_when_answer_question_not_called() -> None:
         AIMessage(content="No videos found."),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("Find python tutorials", video_id=None, session_id=None))
 
@@ -222,7 +222,7 @@ def test_agent_does_not_double_append_memory_when_answer_question_called() -> No
         AIMessage(content="Done"),
     )
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=session_id))
 
@@ -249,7 +249,7 @@ def test_agent_includes_prior_memory_in_context() -> None:
     bound = MagicMock()
     bound.ainvoke = AsyncMock(side_effect=capture_ainvoke)
 
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         asyncio.run(service.chat("Follow-up question", video_id=None, session_id=session_id))
 
@@ -269,7 +269,7 @@ def test_agent_returns_session_id() -> None:
     service = AgentService(config=make_settings(), tools=[], memory=memory)
 
     bound = _make_bound_model(AIMessage(content="Hello"))
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("Hi", video_id=None, session_id=None))
 
@@ -282,7 +282,7 @@ def test_agent_reuses_provided_session_id() -> None:
     service = AgentService(config=make_settings(), tools=[], memory=memory)
 
     bound = _make_bound_model(AIMessage(content="Hello"))
-    with patch("app.services.agent_service.ChatOpenAI") as mock_cls:
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("Hi", video_id=None, session_id="my-session-123"))
 
@@ -331,3 +331,85 @@ def test_format_for_context_answer_question_returns_answer_and_count() -> None:
     output = json.loads(_format_for_context("answer_question", result))
     assert "answer" in output
     assert output["citation_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests - NVIDIA provider with tool-calling disabled (RAG fallback)
+# ---------------------------------------------------------------------------
+
+def test_nvidia_tool_calling_disabled_falls_back_to_rag_without_bind_tools() -> None:
+    """NVIDIA_TOOL_CALLING=False → agent delegates to RAG; no bind_tools call.
+
+    This exercises the provider opt-out path: the agent must NOT build the
+    tool-calling pipeline. Instead it returns the RAG answer with its
+    citations and an empty tool_steps_used list.
+    """
+    from app.schemas.rag import RAGChatResponse
+
+    nvidia_config = Settings(
+        openai_api_key="sk-test",
+        llm_provider="nvidia",
+        nvidia_api_key="nvapi-test",
+        nvidia_tool_calling=False,
+    )
+
+    # Fake RAG service whose answer() returns a grounded response w/ citations.
+    rag_service = MagicMock()
+    rag_service.answer = AsyncMock(
+        return_value=RAGChatResponse(
+            session_id="rag-session-1",
+            answer="Python is used for data science.",
+            citations=[
+                TimestampCitation(
+                    chunk_id="vid1:0:abc",
+                    video_id="vid1",
+                    start_seconds=10.0,
+                    end_seconds=20.0,
+                    timestamp="00:10-00:20",
+                    text="Python is used for data science.",
+                )
+            ],
+            retrieved_context=[],
+            memory=[],
+        )
+    )
+
+    service = AgentService(
+        config=nvidia_config,
+        tools=[make_tool("answer_question", make_rag_tool_result())],
+        memory=make_memory(),
+        rag_service=rag_service,
+    )
+
+    with patch("app.services.llm_provider.ChatOpenAI") as mock_cls:
+        result = asyncio.run(service.chat("What is Python?", video_id="vid1", session_id=None))
+
+    # The agent must NOT have constructed a tool-calling model.
+    mock_cls.return_value.bind_tools.assert_not_called()
+
+    # The RAG answer and citations flow through, with no tool steps.
+    assert result.answer == "Python is used for data science."
+    assert len(result.citations) == 1
+    assert result.citations[0].timestamp == "00:10-00:20"
+    assert result.tool_steps_used == []
+    assert result.session_id == "rag-session-1"
+    # And the RAG service was actually consulted.
+    rag_service.answer.assert_awaited_once()
+
+
+def test_nvidia_without_api_key_raises_503() -> None:
+    from fastapi import HTTPException
+
+    config = Settings(
+        openai_api_key="sk-test",  # embeddings still need OpenAI
+        llm_provider="nvidia",
+        nvidia_api_key=None,
+    )
+    service = AgentService(config=config, tools=[], memory=make_memory())
+
+    try:
+        asyncio.run(service.chat("test", video_id=None, session_id=None))
+        assert False, "Expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert "NVIDIA_API_KEY" in exc.detail

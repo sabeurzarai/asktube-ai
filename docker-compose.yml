@@ -40,8 +40,9 @@ services:
       ANALYTICS_DATABASE_URL: sqlite+aiosqlite:///./data/analytics.db
       ANALYTICS_ENABLED: "true"
       PROMETHEUS_ENABLED: "true"
-      # CORS — allow frontend origin (JSON array format required by pydantic-settings)
-      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      # CORS — allowed frontend origins. Override in .env for production
+      # (JSON array or comma-separated; defaults to local development origins).
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}'
     volumes:
       - backend_data:/app/data
     depends_on:

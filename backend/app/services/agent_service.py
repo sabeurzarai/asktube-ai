@@ -2,10 +2,8 @@ import json
 import time
 from typing import Any
 
-from fastapi import HTTPException, status
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
-from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
 from app.core.config import Settings, settings
@@ -13,8 +11,13 @@ from app.analytics.service import get_analytics_service
 from app.schemas.agent import AgentChatResponse
 from app.schemas.rag import TimestampCitation
 from app.services.chunking_service import get_chunking_service
+from app.services.llm_provider import (
+    create_chat_model,
+    require_chat_credentials,
+    supports_tool_calling,
+)
 from app.services.memory_service import ConversationMemoryService, memory_service
-from app.services.rag_service import get_rag_service
+from app.services.rag_service import RAGService, get_rag_service
 from app.services.transcript_service import get_transcript_service
 from app.services.vectorstore_service import get_vectorstore_service
 from app.services.youtube_service import get_youtube_service
@@ -55,11 +58,16 @@ class AgentService:
         config: Settings,
         tools: list[StructuredTool],
         memory: ConversationMemoryService,
+        rag_service: RAGService | None = None,
     ) -> None:
         self.config = config
         self.tools = tools
         self._tool_map = {t.name: t for t in tools}
         self.memory = memory
+        # Used when the active provider opts out of tool calling
+        # (e.g. NVIDIA_TOOL_CALLING=false): the agent then delegates to the
+        # plain transcript-grounded RAG path instead of bind_tools.
+        self.rag_service = rag_service
 
     @traceable(name="agent_chat", run_type="chain", project_name=settings.langsmith_project)
     async def chat(
@@ -69,18 +77,22 @@ class AgentService:
         session_id: str | None,
     ) -> AgentChatResponse:
         agent_started_at = time.perf_counter()
-        if not self.config.openai_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="OPENAI_API_KEY is required for the agent.",
+        require_chat_credentials(self.config)
+
+        # Provider-specific opt-out: if the active model cannot reliably drive
+        # the tool-calling agent, skip the agent loop entirely and answer via
+        # the existing RAG retrieval + generation path. Citations are preserved
+        # and no separate tool pipeline is built.
+        if not supports_tool_calling(self.config):
+            return await self._answer_via_rag(
+                message=message,
+                video_id=video_id,
+                session_id=session_id,
+                agent_started_at=agent_started_at,
             )
 
         active_session_id = session_id or self.memory.create_session_id()
-        model = ChatOpenAI(
-            model=self.config.chat_model,
-            api_key=self.config.openai_api_key,
-            temperature=0.1,
-        ).bind_tools(self.tools)
+        model = create_chat_model(self.config, temperature=0.1).bind_tools(self.tools)
 
         messages: list = [SystemMessage(content=_build_system_prompt(video_id))]
         for msg in self.memory.get_messages(active_session_id):
@@ -185,6 +197,47 @@ class AgentService:
             tool_steps_used=tool_steps_used,
         )
 
+    async def _answer_via_rag(
+        self,
+        *,
+        message: str,
+        video_id: str | None,
+        session_id: str | None,
+        agent_started_at: float,
+    ) -> AgentChatResponse:
+        """Tool-calling opt-out path: delegate to the RAG retrieval + generation.
+
+        Used when ``supports_tool_calling`` is False (e.g. a NVIDIA model whose
+        tool calling misbehaves). Returns the RAG answer with its citations and
+        ``tool_steps_used=[]`` — no separate agent pipeline is built.
+        """
+        rag_service = self.rag_service or get_rag_service()
+        rag_response = await rag_service.answer(
+            message=message,
+            video_id=video_id,
+            session_id=session_id,
+            top_k=5,
+        )
+        get_analytics_service().safe_track_background(
+            get_analytics_service().track_event_safe(
+                "agent_execution_completed",
+                session_id=rag_response.session_id,
+                duration_ms=(time.perf_counter() - agent_started_at) * 1000,
+                metadata_json={
+                    "tool_steps_used": [],
+                    "tool_count": 0,
+                    "success": bool(rag_response.answer),
+                    "fallback": "rag_no_tool_calling",
+                },
+            )
+        )
+        return AgentChatResponse(
+            session_id=rag_response.session_id,
+            answer=rag_response.answer,
+            citations=rag_response.citations,
+            tool_steps_used=[],
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -260,10 +313,11 @@ def _format_for_context(tool_name: str, result: Any) -> str:
 
 def get_agent_service() -> AgentService:
     vectorstore = get_vectorstore_service()
+    rag_service = get_rag_service()
     tools: list[StructuredTool] = [
         make_search_youtube_videos_tool(get_youtube_service()),
         make_ingest_video_tool(get_transcript_service(), get_chunking_service(), vectorstore),
         make_retrieve_context_tool(vectorstore),
-        make_answer_question_tool(get_rag_service()),
+        make_answer_question_tool(rag_service),
     ]
-    return AgentService(config=settings, tools=tools, memory=memory_service)
+    return AgentService(config=settings, tools=tools, memory=memory_service, rag_service=rag_service)

@@ -188,6 +188,23 @@ async def test_dashboard_counts_events(patched_db):
     assert len(dashboard.recent_events) == 3
 
 
+@pytest.mark.asyncio
+async def test_ux_metrics_use_full_window_not_recent_events(patched_db):
+    """UX metrics must count all events in the analytics window, not just the
+    latest 20 kept for the recent-events feed."""
+    service = make_service()
+    for _ in range(25):
+        await service.track_event(AnalyticsEventCreate(event_type="timestamp_clicked"))
+    for _ in range(4):
+        await service.track_event(AnalyticsEventCreate(event_type="voice_search_failed"))
+
+    dashboard = await service.dashboard()
+
+    assert dashboard.ux_metrics["timestamp_clicks"] == 25
+    assert dashboard.ux_metrics["voice_failures"] == 4
+    assert len(dashboard.recent_events) == 20
+
+
 # ── helper functions ──────────────────────────────────────────────────────────
 
 def test_rate_normal():

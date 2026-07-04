@@ -122,6 +122,11 @@ class AnalyticsService:
             completed_searches = await event_count(session, "search_completed", week_start)
             voice_started = await event_count(session, "voice_search_started", week_start)
             voice_completed = await event_count(session, "voice_search_completed", week_start)
+            videos_selected = await event_count(session, "video_selected", week_start)
+            carousel_scrolls = await event_count(session, "carousel_scrolled", week_start)
+            voice_failures = await event_count(session, "voice_search_failed", week_start)
+            timestamp_clicks = await event_count(session, "timestamp_clicked", week_start)
+            chatbot_interactions = await event_count(session, "3d_chatbot_interacted", week_start)
 
             rag_rows = (
                 await session.execute(
@@ -136,6 +141,13 @@ class AnalyticsService:
             events = (
                 await session.execute(
                     select(AnalyticsEvent).order_by(AnalyticsEvent.timestamp.desc()).limit(20)
+                )
+            ).scalars().all()
+            week_events = (
+                await session.execute(
+                    select(AnalyticsEvent)
+                    .where(AnalyticsEvent.timestamp >= week_start)
+                    .order_by(AnalyticsEvent.timestamp.asc())
                 )
             ).scalars().all()
 
@@ -205,11 +217,11 @@ class AnalyticsService:
                 ],
             },
             ux_metrics={
-                "carousel_click_rate": rate(awaited_count(events, "video_selected"), awaited_count(events, "carousel_scrolled")),
-                "voice_failures": awaited_count(events, "voice_search_failed"),
+                "carousel_click_rate": rate(videos_selected, carousel_scrolls),
+                "voice_failures": voice_failures,
                 "chat_retention": rate(repeat_sessions, chat_sessions),
-                "timestamp_clicks": awaited_count(events, "timestamp_clicked"),
-                "chatbot_interactions": awaited_count(events, "3d_chatbot_interacted"),
+                "timestamp_clicks": timestamp_clicks,
+                "chatbot_interactions": chatbot_interactions,
             },
             business_metrics={
                 "sessions": chat_sessions,
@@ -217,7 +229,7 @@ class AnalyticsService:
                 "videos_processed": len(video_rows),
                 "questions_per_day": round(questions_today, 2),
                 "avg_processing_time": round(avg_processing, 2),
-                "daily_activity": event_series(events),
+                "daily_activity": event_series(week_events),
             },
             recent_events=[
                 {
@@ -265,10 +277,6 @@ def rate(numerator: int | float, denominator: int | float) -> float:
 
 def fmt_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%m-%d %H:%M")
-
-
-def awaited_count(events: list[AnalyticsEvent], event_type: str) -> int:
-    return sum(1 for event in events if event.event_type == event_type)
 
 
 def event_series(events: list[AnalyticsEvent]) -> list[MetricPoint]:

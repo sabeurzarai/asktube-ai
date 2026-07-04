@@ -1,12 +1,38 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const configuredApiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+export const API_BASE = configuredApiBase;
 export const WS_BASE = API_BASE.replace(/^http/, "ws");
 
+// Runtime fallback: when the bundle was built with a localhost API URL but the
+// page is served from a public host, target that host instead — same-origin on
+// HTTPS (the reverse proxy serves /api), direct backend port on plain HTTP.
+function resolveApiBase() {
+  if (typeof window === "undefined") return configuredApiBase;
+
+  try {
+    const configured = new URL(configuredApiBase);
+    const isLocalConfiguredHost = configured.hostname === "localhost" || configured.hostname === "127.0.0.1";
+    const isLocalBrowserHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+    if (isLocalConfiguredHost && !isLocalBrowserHost) {
+      if (window.location.protocol === "https:") {
+        return window.location.origin;
+      }
+      return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
+  } catch {
+    return configuredApiBase;
+  }
+
+  return configuredApiBase;
+}
+
 export function getApiBase() {
-  return API_BASE;
+  return resolveApiBase();
 }
 
 export function getWsBase() {
-  return WS_BASE;
+  return getApiBase().replace(/^http/, "ws");
 }
 
 export interface YouTubeVideo {
@@ -121,7 +147,6 @@ export interface IngestResponse {
 }
 
 export async function ingestVideo(videoId: string): Promise<IngestResponse> {
-  console.log(`[AskTube API] POST /api/videos/${videoId}/ingest`);
   const res = await fetch(`${getApiBase()}/api/videos/${videoId}/ingest`, {
     method: "POST",
   });
@@ -129,13 +154,10 @@ export async function ingestVideo(videoId: string): Promise<IngestResponse> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: "Ingest failed" }));
     const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    console.error(`[AskTube API] Ingest failed ${res.status}: ${detail}`);
     throw new Error(`${res.status}: ${detail}`);
   }
 
-  const data = await res.json() as IngestResponse;
-  console.log(`[AskTube API] Ingest OK - ${data.chunk_count} chunks`);
-  return data;
+  return await res.json() as IngestResponse;
 }
 
 // -- Chat ----------------------------------------------------------------------

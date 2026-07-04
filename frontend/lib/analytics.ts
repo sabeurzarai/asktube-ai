@@ -4,15 +4,8 @@ const SESSION_KEY = "asktube.analytics.session_id";
 const USER_KEY = "asktube.analytics.user_id";
 const configuredApiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-interface AnalyticsEventPayload {
-  event_type: string;
-  session_id?: string | null;
-  user_id?: string | null;
-  page?: string | null;
-  duration_ms?: number | null;
-  metadata_json?: Record<string, unknown>;
-}
-
+// Kept separate from lib/api's resolver (tests stub "@/lib/api" wholesale),
+// but the fallback rules must stay in sync with resolveApiBase there.
 function resolveAnalyticsApiBase() {
   if (typeof window === "undefined") return configuredApiBase;
 
@@ -22,6 +15,9 @@ function resolveAnalyticsApiBase() {
     const isLocalBrowserHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
     if (isLocalConfiguredHost && !isLocalBrowserHost) {
+      if (window.location.protocol === "https:") {
+        return window.location.origin;
+      }
       return `${window.location.protocol}//${window.location.hostname}:8000`;
     }
   } catch {
@@ -29,6 +25,15 @@ function resolveAnalyticsApiBase() {
   }
 
   return configuredApiBase;
+}
+
+interface AnalyticsEventPayload {
+  event_type: string;
+  session_id?: string | null;
+  user_id?: string | null;
+  page?: string | null;
+  duration_ms?: number | null;
+  metadata_json?: Record<string, unknown>;
 }
 
 function createId(prefix: string) {

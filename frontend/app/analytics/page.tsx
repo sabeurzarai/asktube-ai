@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -386,16 +386,19 @@ function MetricPill({ label, value, tooltip }: { label: string; value: string | 
 }
 
 function MetricTooltip({ title, body }: { title: string; body: string }) {
+  const tooltipId = useId();
   return (
     <span className="group relative inline-flex">
       <button
         type="button"
         className="grid size-7 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-400 transition hover:border-cyan-300/50 hover:bg-cyan-200/10 hover:text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/50"
         aria-label={`Explain ${title}`}
+        aria-describedby={tooltipId}
       >
         <Info aria-hidden="true" className="size-3.5" />
       </button>
       <span
+        id={tooltipId}
         role="tooltip"
         className="pointer-events-none absolute right-0 top-9 z-40 w-72 rounded-2xl border border-cyan-300/20 bg-[#080b12]/95 p-3 text-left text-xs leading-5 text-slate-300 opacity-0 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
       >
