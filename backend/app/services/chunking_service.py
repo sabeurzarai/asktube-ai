@@ -1,14 +1,13 @@
 import hashlib
 from dataclasses import dataclass
 
-from fastapi import HTTPException, status
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import Settings, settings
 from app.schemas.chunks import TranscriptChunk
 from app.schemas.transcript import TranscriptResponse, TranscriptSegment
+from app.services.embedding_provider import create_embeddings, require_embedding_credentials
 
 
 @dataclass(frozen=True)
@@ -35,17 +34,10 @@ class ChunkingService:
 
         embedding_model = None
         if options.include_embeddings:
-            if not self.config.openai_api_key:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="OPENAI_API_KEY is required for embedding generation.",
-                )
+            require_embedding_credentials(self.config)
 
             embedding_model = self.config.embedding_model
-            embeddings = OpenAIEmbeddings(
-                model=self.config.embedding_model,
-                api_key=self.config.openai_api_key,
-            )
+            embeddings = create_embeddings(self.config)
             vectors = await embeddings.aembed_documents([chunk.text for chunk in chunks])
 
             for chunk, vector in zip(chunks, vectors, strict=True):

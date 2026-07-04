@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     # then falls back to plain RAG instead of bind_tools.
     nvidia_tool_calling: bool = Field(default=True, alias="NVIDIA_TOOL_CALLING")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
+    # ── Embedding provider ─────────────────────────────────────────────────────
+    # "openai" (default) or "local". Local mode runs a HuggingFace
+    # sentence-transformers model on the CPU — fully free, no API calls, but
+    # changing providers changes vector dimensions: wipe the ChromaDB collection
+    # and re-ingest all videos before querying, or retrieval returns garbage.
+    embedding_provider: str = Field(default="openai", alias="EMBEDDING_PROVIDER")
+    local_embedding_model: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2",
+        alias="LOCAL_EMBEDDING_MODEL",
+    )
     chunk_max_chars: int = Field(default=1200, alias="CHUNK_MAX_CHARS")
     chunk_overlap_segments: int = Field(default=1, alias="CHUNK_OVERLAP_SEGMENTS")
     chroma_host: str = Field(default="localhost", alias="CHROMA_HOST")

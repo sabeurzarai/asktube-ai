@@ -1,0 +1,9 @@
+# CPU-only PyTorch wheel (no CUDA deps — ~200MB instead of ~2.5GB).
+# Installed from PyTorch's CPU index BEFORE requirements.txt so that
+# sentence-transformers' torch dependency resolves to this CPU build
+# instead of pulling the default CUDA-bundled wheel from PyPI.
+#
+# Pin rationale: the PyTorch CPU index lags PyPI. 2.9.1 is the latest +cpu
+# wheel available for cp312/linux_x86_64 on https://download.pytorch.org/whl/cpu.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu

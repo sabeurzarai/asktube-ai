@@ -202,7 +202,9 @@ Render runs each service as a separate Docker container. You need three services
 | `CHROMA_PORT` | Docker/prod | ChromaDB port (usually `8000`) |
 | `CHROMA_PERSIST_DIR` | Local only | Path for embedded ChromaDB (default `./chroma_data`) |
 | `CHAT_MODEL` | No | Default: `gpt-4o-mini` (used when `LLM_PROVIDER=openai`) |
-| `EMBEDDING_MODEL` | No | Default: `text-embedding-3-small` |
+| `EMBEDDING_MODEL` | No | Default: `text-embedding-3-small` (used when `EMBEDDING_PROVIDER=openai`) |
+| `EMBEDDING_PROVIDER` | No | `openai` (default) or `local` — free CPU embeddings via HuggingFace |
+| `LOCAL_EMBEDDING_MODEL` | No | Default: `sentence-transformers/all-MiniLM-L6-v2` |
 | `WHISPER_MODEL` | No | Default: `whisper-1` |
 | `LLM_PROVIDER` | No | `openai` (default) or `nvidia` — chat generation only |
 | `NVIDIA_API_KEY` | If `LLM_PROVIDER=nvidia` | Key from https://build.nvidia.com |
@@ -390,6 +392,33 @@ AskTube AI defaults to OpenAI for chat generation. You can optionally route **ch
 **Tool calling.** The agent relies on tool calling. If your chosen model's tool calling misbehaves, set `NVIDIA_TOOL_CALLING=false` — the agent then skips the tool pipeline and answers via the existing transcript-grounded RAG path (citations preserved, `tool_steps_used` empty). Set it back to `true` for the full agent.
 
 To return to OpenAI, unset `LLM_PROVIDER` (or set `LLM_PROVIDER=openai`) and restart.
+
+---
+
+### Optional: Local embeddings (free, no API key)
+
+By default AskTube AI uses OpenAI's `text-embedding-3-small` for embeddings (cheap, but not free). You can instead run a **HuggingFace `sentence-transformers` model on the CPU** — fully free, no API calls, no key. Combined with NVIDIA chat, this makes the entire inference path $0.
+
+**Trade-offs:** the Docker image grows by ~800 MB (torch), and CPU embedding is slower than the OpenAI API (fine for demos). First ingest downloads the model (~80 MB) and caches it under `/app/data/hf_cache` (persists across restarts).
+
+1. In your `.env`, set:
+   ```dotenv
+   EMBEDDING_PROVIDER=local
+   # Optional (default shown):
+   # LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+   ```
+2. Rebuild the backend (first build downloads torch; expect ~10-20 min):
+   ```bash
+   docker compose up -d --build backend
+   ```
+3. ⚠️ **Wipe the existing ChromaDB collection** (vector dimensions changed 1536→384) and re-ingest all videos:
+   ```bash
+   docker compose exec backend python -c "import chromadb; c=chromadb.HttpClient(host='chromadb',port=8000); c.delete_collection('asktube_videos')"
+   ```
+   The app recreates the collection automatically on the next ingest.
+4. Re-ingest each video you want to query.
+
+To return to OpenAI embeddings, set `EMBEDDING_PROVIDER=openai`, wipe the collection again, rebuild, and re-ingest.
 
 ---
 

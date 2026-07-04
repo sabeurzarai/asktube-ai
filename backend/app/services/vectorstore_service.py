@@ -5,13 +5,13 @@ from typing import Any
 import chromadb
 from chromadb.api.models.Collection import Collection
 from fastapi import HTTPException, status
-from langchain_openai import OpenAIEmbeddings
 
 from app.core.config import Settings, settings
 from app.analytics.prometheus import EMBEDDING_DURATION, VECTOR_QUERY_DURATION
 from app.analytics.service import get_analytics_service
 from app.schemas.chunks import TranscriptChunk
 from app.schemas.vectorstore import VectorSearchResult
+from app.services.embedding_provider import create_embeddings, require_embedding_credentials
 
 
 class ChromaVectorStoreService:
@@ -41,19 +41,12 @@ class ChromaVectorStoreService:
         if not chunks:
             return []
 
-        if not self.config.openai_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="OPENAI_API_KEY is required for vector storage.",
-            )
+        require_embedding_credentials(self.config)
 
         missing_embeddings = [chunk for chunk in chunks if chunk.embedding is None]
         if missing_embeddings:
             embedding_start = time.perf_counter()
-            embeddings = OpenAIEmbeddings(
-                model=self.config.embedding_model,
-                api_key=self.config.openai_api_key,
-            )
+            embeddings = create_embeddings(self.config)
             vectors = await embeddings.aembed_documents([chunk.text for chunk in missing_embeddings])
             embedding_ms = (time.perf_counter() - embedding_start) * 1000
             EMBEDDING_DURATION.observe(embedding_ms / 1000)
@@ -103,16 +96,9 @@ class ChromaVectorStoreService:
         limit: int = 5,
         video_id: str | None = None,
     ) -> list[VectorSearchResult]:
-        if not self.config.openai_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="OPENAI_API_KEY is required for vector search.",
-            )
+        require_embedding_credentials(self.config)
 
-        embeddings = OpenAIEmbeddings(
-            model=self.config.embedding_model,
-            api_key=self.config.openai_api_key,
-        )
+        embeddings = create_embeddings(self.config)
         embedding_start = time.perf_counter()
         query_embedding = await embeddings.aembed_query(query)
         EMBEDDING_DURATION.observe(time.perf_counter() - embedding_start)

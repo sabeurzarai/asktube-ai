@@ -152,6 +152,30 @@ docker compose up -d --build backend
 
 To return to OpenAI, set `LLM_PROVIDER=openai` (or unset it) and rebuild.
 
+### Optional: Local embeddings (free, no API key)
+
+You can run embeddings on the CPU with a HuggingFace `sentence-transformers` model — no API key, no cost. Combined with NVIDIA chat, this makes inference fully $0 (OpenAI key then only needed for the optional Whisper fallback). Append to your `.env`:
+
+```dotenv
+EMBEDDING_PROVIDER=local
+# Optional (default shown):
+# LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+Trade-offs: the backend image grows ~800 MB (torch), CPU embedding is slower than the API, and the first ingest downloads the model (~80 MB, cached at `/app/data/hf_cache`). Then:
+
+```bash
+# 1. Rebuild (first build downloads torch; expect ~10-20 min)
+docker compose up -d --build backend
+
+# 2. Wipe the existing collection — dimensions changed 1536→384
+docker compose exec backend python -c "import chromadb; c=chromadb.HttpClient(host='chromadb',port=8000); c.delete_collection('asktube_videos')"
+
+# 3. Re-ingest each video you want to query.
+```
+
+To return to OpenAI embeddings: set `EMBEDDING_PROVIDER=openai`, wipe the collection again, rebuild, and re-ingest.
+
 ---
 
 ## 5. Build and Start the Stack
