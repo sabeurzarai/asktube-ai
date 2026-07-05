@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from openai import AsyncOpenAI, OpenAIError
 from youtube_transcript_api import (
+    CouldNotRetrieveTranscript,
     NoTranscriptFound,
     TranscriptsDisabled,
     YouTubeTranscriptApi,
@@ -49,6 +50,21 @@ class TranscriptService:
                 ) from None
 
             return await self._fetch_whisper_transcript(video_id=video_id, language=options.language)
+        except CouldNotRetrieveTranscript as exc:
+            # Covers RequestBlocked/IpBlocked and other retrieval failures.
+            # YouTube routinely blocks datacenter IPs (EC2, Render, GCP) —
+            # without this the error escaped as a bare 500, which also lacks
+            # CORS headers, so browsers surfaced it as an opaque network error.
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "YouTube refused the transcript request from this server "
+                    "(datacenter IPs are frequently blocked). Configure the "
+                    "WEBSHARE_PROXY_USERNAME/WEBSHARE_PROXY_PASSWORD environment "
+                    "variables to route transcript requests through a residential "
+                    "proxy, then retry."
+                ),
+            ) from exc
 
     def _fetch_youtube_transcript(self, video_id: str, language: str) -> TranscriptResponse:
         # youtube-transcript-api v1.x: instantiate the API, use .list() instead of .list_transcripts()

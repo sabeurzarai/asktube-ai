@@ -1,12 +1,37 @@
 from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from fastapi import HTTPException
+from youtube_transcript_api import CouldNotRetrieveTranscript
 
 from app.core.config import Settings
 from app.services.transcript_service import (
+    TranscriptFetchOptions,
     TranscriptService,
     get_transcription_text,
     normalize_whisper_segments,
     normalize_youtube_segments,
 )
+
+
+@pytest.mark.asyncio
+async def test_blocked_transcript_request_returns_502_not_500() -> None:
+    """YouTube blocking a datacenter IP raises CouldNotRetrieveTranscript
+    subclasses (RequestBlocked/IpBlocked); these must surface as a clean 502
+    with a proxy hint, not escape as an unhandled 500."""
+    service = TranscriptService(Settings(_env_file=None))
+
+    with patch.object(
+        TranscriptService,
+        "_fetch_youtube_transcript",
+        side_effect=CouldNotRetrieveTranscript("vid123"),
+    ):
+        with pytest.raises(HTTPException) as excinfo:
+            await service.get_transcript("vid123", TranscriptFetchOptions())
+
+    assert excinfo.value.status_code == 502
+    assert "WEBSHARE_PROXY" in excinfo.value.detail
 
 
 def test_normalize_youtube_segments() -> None:
