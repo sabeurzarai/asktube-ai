@@ -1,8 +1,8 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -105,7 +105,10 @@ class Settings(BaseSettings):
     prometheus_enabled: bool = Field(default=True, alias="PROMETHEUS_ENABLED")
     langchain_tracing_v2: bool | None = Field(default=None, alias="LANGCHAIN_TRACING_V2")
     langchain_project: str | None = Field(default=None, alias="LANGCHAIN_PROJECT")
-    cors_origins: list[str] = Field(
+    # NoDecode: stop pydantic-settings from JSON-decoding the env value before
+    # parse_cors_origins runs — otherwise a plain comma-separated CORS_ORIGINS
+    # (the format .env.example documents) crashes startup with a SettingsError.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default=["http://localhost:3000", "http://127.0.0.1:3000"],
         alias="CORS_ORIGINS",
         description="Comma-separated list of allowed CORS origins.",
