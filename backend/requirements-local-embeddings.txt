@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# OPTIONAL extras — only install these to use EMBEDDING_PROVIDER=local.
+# The default backend image does NOT include them (keeps it slim + ARM-safe).
+#
+# Install with:
+#     pip install -r requirements-local-embeddings.txt
+#
+# This pulls in torch + transformers (~0.5–1 GB). See the platform notes below
+# to control torch's size — the default `torch` wheel on PyPI ships CUDA libs on
+# amd64 (adds ~2 GB); the CPU-only pin avoids that.
+# ──────────────────────────────────────────────────────────────────────────────
+langchain-huggingface==1.2.2
+sentence-transformers==5.5.0
+
+# ── torch: platform-specific ──────────────────────────────────────────────────
+# On amd64 (x86_64, e.g. Intel/AMD laptops, most CI), pin the CPU wheel from
+# PyTorch's CPU index to avoid pulling ~2 GB of unused CUDA libraries:
+#
+#     --extra-index-url https://download.pytorch.org/whl/cpu
+#     torch==2.9.1+cpu
+#
+# On arm64 (aarch64, e.g. Oracle Cloud Always Free Ampere, Apple Silicon), do
+# NOT use the `+cpu` pin — that local version is only published for linux_x86_64
+# and the install will fail. Plain `torch` from PyPI is already CPU-only on
+# aarch64, so just uncomment the line below on ARM hosts:
+#
+#     torch
+#
+# Docker build (amd64): uncomment BOTH lines below to bake CPU torch into the
+# image. Docker build (arm64): uncomment just the plain `torch` line instead.
+#
+# --extra-index-url https://download.pytorch.org/whl/cpu
+# torch==2.9.1+cpu

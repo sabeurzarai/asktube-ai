@@ -15,12 +15,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-cpu.txt requirements.txt ./
-# Install CPU-only torch FIRST from the PyTorch CPU index, so that the main
-# requirements' sentence-transformers -> torch dependency resolves to this
-# small CPU wheel instead of the default CUDA-bundled wheel (~2.5GB).
-RUN pip install --no-cache-dir -r requirements-cpu.txt \
-    && pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-local-embeddings.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+# To bake the free local-embeddings extras into this image (adds torch,
+# ~0.5–2 GB depending on platform), uncomment ONE of the lines below:
+#   amd64/x86_64 (CPU-only torch from the PyTorch CPU index, ~200 MB):
+#     RUN pip install --no-cache-dir -r requirements-local-embeddings.txt \
+#         --extra-index-url https://download.pytorch.org/whl/cpu
+#   arm64/aarch64 (plain torch from PyPI is already CPU-only on ARM):
+#     RUN pip install --no-cache-dir -r requirements-local-embeddings.txt
 
 COPY app ./app
 

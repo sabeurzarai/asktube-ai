@@ -1,14 +1,81 @@
-# AskTube AI — AWS EC2 Deployment Guide
+# AskTube AI — Deployment Guide
 
 This guide deploys the full stack (Next.js frontend, FastAPI backend, ChromaDB, and
-AskTube analytics/observability) on a single EC2 instance behind an Nginx reverse
-proxy, with HTTPS via DuckDNS and Certbot.
+AskTube analytics/observability) on a single host behind an Nginx reverse proxy,
+with HTTPS via DuckDNS and Certbot.
 
 Current public demo:
 
 ```text
 https://asktube-ai.duckdns.org
 ```
+
+---
+
+## 0. Free demo hosting ($0)
+
+For a class/demo project the paid EC2 path (sections 1–8 below) is overkill. Two
+free paths work; **Oracle Cloud is recommended** because it preserves data across
+restarts. The Vercel + Render fallback loses data on idle and is only a last resort.
+
+### Path A — Oracle Cloud "Always Free" VM (recommended)
+
+Since 2026-06-15 the Always Free tier includes **2 Ampere ARM OCPUs / 12 GB RAM** —
+more than the current EC2 instance. The entire existing setup transfers unchanged.
+
+**Signup caveat:** a card is required for identity verification but is **never
+charged** on Always Free resources. Region capacity varies (try a few regions if
+"out of capacity" appears). Idle instances can be reclaimed by Oracle — log in
+occasionally and/or keep a small always-on load on the box. The host is **arm64**,
+so images build on the VM itself (see the ARM note below).
+
+**Steps:**
+1. Create an Always Free **Ampere A1** instance, Ubuntu 22.04 LTS.
+2. In the VCN's security list, open inbound **80** and **443** (and 22 for SSH).
+3. SSH in and install Docker + the compose plugin (same as section 2 below).
+4. `git clone` the repo, copy `.env` (set `OPENAI_API_KEY`, `YOUTUBE_API_KEY`, and
+   optionally `LLM_PROVIDER=nvidia` / `EMBEDDING_PROVIDER=local`).
+5. Build + start:
+   ```bash
+   docker compose up -d --build
+   ```
+6. Update the DuckDNS record to point `asktube-ai.duckdns.org` at the new public IP.
+7. Install Nginx + Certbot on the host and issue the certificate:
+   ```bash
+   sudo certbot --nginx -d asktube-ai.duckdns.org
+   ```
+   (reuse the Nginx config from section 6/7 below).
+
+**arm64 note:** the `+cpu` torch pin in `backend/requirements-local-embeddings.txt`
+is for amd64 only. On Ampere (aarch64) plain `torch` from PyPI is already CPU-only,
+so if you enable `EMBEDDING_PROVIDER=local`, uncomment the plain `torch` line (not
+the `+cpu` line) in that file before building. With the default
+`EMBEDDING_PROVIDER=openai`, the slim image builds on both architectures and no
+torch is installed at all.
+
+### Path B — Vercel + Render (fallback)
+
+Use only if Oracle signup or capacity fails. Honest tradeoffs up front:
+- **A card is required** by Render despite the "free" tier.
+- Services **spin down after 15 idle minutes** with 30–60 s cold starts.
+- **No persistent disk** — ChromaDB contents and the SQLite analytics DB are lost
+  on every restart. Re-ingest a demo video before each showing.
+- Render's free **Postgres self-deletes after ~30 days.**
+
+**Setup:**
+- **Frontend → Vercel.** Import the repo, set root to `frontend/`, framework
+  Next.js. Set `NEXT_PUBLIC_API_URL` to the Render backend URL **at build time**
+  (Next.js bakes it into the bundle). Add the Vercel URL to backend `CORS_ORIGINS`.
+- **Backend → Render.** Web service from `backend/`, start command
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Set all `.env` vars, plus
+  `CHROMA_USE_HTTP=false` (embedded Chroma inside the backend — there is no second
+  free service with a disk). Re-deploy.
+
+### Retiring the paid EC2 instance
+
+Once the free host is live, retire EC2 in this order (see the checklist in
+[section 13](#13-ec2-teardown-checklist) below). **Do not skip step 4** — an
+unattached Elastic IP bills hourly and is the classic leftover charge.
 
 ---
 
@@ -638,6 +705,36 @@ The certificate path must match `server_name`. Check:
 docker compose exec nginx ls /etc/nginx/ssl/live/
 ```
 The directory name must exactly match the domain in your Nginx config.
+
+---
+
+## 13. EC2 teardown checklist
+
+Follow this order after the free host (section 0) is live. **Step 4 is the one
+most people miss** and is what actually generates leftover charges.
+
+1. **Back up data off the instance first** (do this before anything destructive):
+   ```bash
+   # From the host, dump the named volumes to tarballs in the current dir:
+   docker run --rm -v asktube-ai-main_backend_data:/d -v "$(pwd)":/out alpine \
+       tar czf /out/backend_data.tgz -C /d .
+   docker run --rm -v asktube-ai-main_chroma_data:/d -v "$(pwd)":/out alpine \
+       tar czf /out/chroma_data.tgz -C /d .
+   # Then scp both tarballs AND the server's .env to local storage:
+   scp ubuntu@<EC2-IP>:~/asktube-ai-main/backend_data.tgz .
+   scp ubuntu@<EC2-IP>:~/asktube-ai-main/chroma_data.tgz .
+   scp ubuntu@<EC2-IP>:~/asktube-ai-main/.env ./ec2.env.backup
+   ```
+2. Stop the stack: `docker compose down`.
+3. **Terminate the EC2 instance** in the AWS console.
+4. **Release the Elastic IP (`18.157.233.122`).** An unattached Elastic IP is
+   billed hourly — this is the classic silent leftover charge. In the console:
+   EC2 → Elastic IPs → select → Actions → Disassociate, then Release address.
+5. Delete any unused **EBS volumes and snapshots** the instance left behind.
+6. Confirm the AWS Billing dashboard shows **zero active resources** (no charges
+   accruing). Watch it again at the next billing cycle to be sure.
+7. **Keep the DuckDNS account and the `asktube-ai.duckdns.org` subdomain** — it is
+   free, and you just repointed it at the new host.
 
 ---
 
