@@ -400,10 +400,24 @@ Certificates auto-renew every 12 hours via the `certbot` sidecar container.
 
 ### Current live demo setup
 
-The actual hosted AskTube demo uses host-level Nginx and Certbot instead of the Docker Nginx sidecar:
+> **Since July 2026 the live demo no longer runs on EC2.** It uses the free
+> Vercel + Render path from [section 0](#0-free-demo-hosting-0):
+>
+> ```text
+> https://asktube-ai.duckdns.org  -> DuckDNS A record 216.198.79.1 -> Vercel (frontend)
+> https://asktube-ai.vercel.app   -> same frontend (backup URL)
+> https://asktube-ai-q2gi.onrender.com -> Render (backend, embedded Chroma)
+> ```
+>
+> DuckDNS works with Vercel because `duckdns.org` is on the Public Suffix List,
+> so Vercel treats the subdomain as an apex domain and accepts a plain A record
+> (DuckDNS cannot serve CNAMEs). The EC2 description below is kept for reference
+> in case the demo ever moves back to a VM.
+
+The previous EC2 setup used host-level Nginx and Certbot instead of the Docker Nginx sidecar:
 
 ```text
-https://asktube-ai.duckdns.org -> EC2 Elastic IP 18.157.233.122
+https://asktube-ai.duckdns.org -> EC2 Elastic IP 18.157.233.122   (retired)
 ```
 
 The EC2 security group must allow public `80` and `443`. On the live EC2 instance, Docker maps the frontend to host port `3001` (a local override — `ports: ["3001:3000"]`) and the backend to host port `8000`, both hidden behind Nginx.
