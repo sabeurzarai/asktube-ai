@@ -174,7 +174,7 @@ export function AboutSection() {
         <span>
           Built by <span className="font-semibold text-slate-300">Sabeur Zarai</span>
           {" · "}
-          <span className="text-slate-400">IronHack Final Project · 2025</span>
+          <span className="text-slate-400">IronHack Final Project · 2026</span>
         </span>
         <span className="flex items-center gap-1.5">
           <Youtube aria-hidden="true" className="size-3.5 text-red-400" />
