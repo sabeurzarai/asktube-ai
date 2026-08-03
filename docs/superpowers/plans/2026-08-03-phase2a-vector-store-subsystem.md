@@ -783,7 +783,7 @@ class PgVectorStore:
             "       segment_indices, source, language, "
             "       embedding <=> cast(:query_embedding as text)::vector as distance "
             "from transcript_chunks "
-            "where (:video_id::text is null or video_id = :video_id) "
+            "where (cast(:video_id as text) is null or video_id = :video_id) "  # NOT :video_id::text — SQLAlchemy text() skips a :name followed by ":"
             "order by embedding <=> cast(:query_embedding as text)::vector "
             "limit :limit"
         )

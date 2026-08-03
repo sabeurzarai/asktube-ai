@@ -97,7 +97,11 @@ class PgVectorStore:
             "       segment_indices, source, language, "
             "       embedding <=> cast(:query_embedding as text)::vector as distance "
             "from transcript_chunks "
-            "where (:video_id::text is null or video_id = :video_id) "
+            # cast(... as text), NOT :video_id::text — SQLAlchemy's text() ignores a
+            # :name immediately followed by another colon so it does not mangle
+            # PostgreSQL's :: cast operator. The bind is then never substituted and
+            # Postgres receives a literal ':', failing with "syntax error at or near".
+            "where (cast(:video_id as text) is null or video_id = :video_id) "
             "order by embedding <=> cast(:query_embedding as text)::vector "
             "limit :limit"
         )
