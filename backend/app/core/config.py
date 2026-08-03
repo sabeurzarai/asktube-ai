@@ -101,6 +101,25 @@ class Settings(BaseSettings):
         alias="ANALYTICS_DATABASE_URL",
         description="Async SQLAlchemy URL for analytics storage. Use PostgreSQL in production.",
     )
+    database_url: str | None = Field(
+        default=None,
+        alias="DATABASE_URL",
+        description=(
+            "Single async SQLAlchemy URL for all persistent stores. When set it "
+            "takes priority over ANALYTICS_DATABASE_URL. Example: "
+            "postgresql+asyncpg://user:password@host:6543/postgres"
+        ),
+    )
+    db_pool_size: int = Field(
+        default=5,
+        alias="DB_POOL_SIZE",
+        description="Kept small: Supabase Free caps connections and Render's free container is memory-constrained.",
+    )
+    db_max_overflow: int = Field(
+        default=5,
+        alias="DB_MAX_OVERFLOW",
+        description="Additional connections allowed beyond db_pool_size under burst.",
+    )
     analytics_enabled: bool = Field(default=True, alias="ANALYTICS_ENABLED")
     prometheus_enabled: bool = Field(default=True, alias="PROMETHEUS_ENABLED")
     langchain_tracing_v2: bool | None = Field(default=None, alias="LANGCHAIN_TRACING_V2")
@@ -161,6 +180,11 @@ class Settings(BaseSettings):
             for location in self.webshare_proxy_locations.split(",")
             if location.strip()
         ]
+
+    @property
+    def resolved_analytics_url(self) -> str:
+        """DATABASE_URL wins; ANALYTICS_DATABASE_URL is the backwards-compatible fallback."""
+        return self.database_url or self.analytics_database_url
 
 
 @lru_cache

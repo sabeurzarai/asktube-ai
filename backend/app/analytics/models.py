@@ -2,7 +2,12 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# JSONB is indexable and typed on Postgres; SQLite keeps plain JSON so local
+# development and the test suite are unaffected.
+JSON_VARIANT = JSON().with_variant(JSONB(), "postgresql")
 
 
 def utc_now() -> datetime:
@@ -23,7 +28,7 @@ class AnalyticsEvent(Base):
     user_id: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
     page: Mapped[str | None] = mapped_column(String(240), nullable=True)
     duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
-    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON_VARIANT, default=dict)
 
 
 class VideoMetric(Base):
@@ -37,7 +42,7 @@ class VideoMetric(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     whisper_used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
-    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON_VARIANT, default=dict)
 
 
 class ChatMetric(Base):
@@ -50,7 +55,7 @@ class ChatMetric(Base):
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     followup_questions: Mapped[int] = mapped_column(Integer, default=0)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
-    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON_VARIANT, default=dict)
 
 
 class RAGMetric(Base):
@@ -69,4 +74,4 @@ class RAGMetric(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     response_length: Mapped[int] = mapped_column(Integer, default=0)
     hallucination_warning: Mapped[bool] = mapped_column(Boolean, default=False)
-    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON_VARIANT, default=dict)

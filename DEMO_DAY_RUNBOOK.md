@@ -32,6 +32,12 @@ derail the demo — fix it first.
 > from Render's datacenter IPs. The proxy routes the fetch through a residential
 > IP. Without it: ingest = guaranteed 502.
 
+### 0.5 ⏸️ Restore Supabase if paused (if using Postgres)
+
+If `DATABASE_URL` points at Supabase: confirm the project is not paused (Free plan
+pauses after 7 days of low activity and needs a manual restore from the dashboard).
+A paused database surfaces as a 502 on ingest and chat.
+
 ### 1. 🌡️ Warm the backend (~1 min before presenting)
 
 Free-tier cold start is 30–60 s. Warm it so the audience never sees it.
