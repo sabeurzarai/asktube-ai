@@ -19,24 +19,23 @@ def test_explicit_pgvector_backend(monkeypatch):
     assert isinstance(store, PgVectorStore)
 
 
-def test_chroma_backend_raises_naming_the_service_layer(monkeypatch):
-    # ChromaVectorStoreService does not satisfy the VectorStore protocol (it has
-    # upsert_chunks/similarity_search(query: str), not
-    # replace_video_chunks/similarity_search(query_embedding: list[float])), so
-    # create_vector_store() must never build one. Selecting Chroma is a
-    # service-layer decision in get_vectorstore_service().
-    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
-    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
-        create_vector_store(Settings(_env_file=None))
-
-
-def test_default_also_raises_since_default_resolves_to_chroma(monkeypatch):
-    # An unset VECTOR_BACKEND resolves to "chroma" (resolve_vector_backend's
-    # default), and create_vector_store() rejects "chroma" just like an explicit
-    # setting would — it never silently builds a non-VectorStore.
+def test_default_derives_pgvector_when_database_url_is_set(monkeypatch):
     monkeypatch.delenv("VECTOR_BACKEND", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
-    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
+    store = create_vector_store(Settings(_env_file=None))
+    assert isinstance(store, PgVectorStore)
+
+
+def test_default_is_memory_without_a_database_url(monkeypatch):
+    monkeypatch.delenv("VECTOR_BACKEND", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    store = create_vector_store(Settings(_env_file=None))
+    assert isinstance(store, InMemoryVectorStore)
+
+
+def test_chroma_is_no_longer_a_valid_backend(monkeypatch):
+    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
+    with pytest.raises(ValueError, match="removed"):
         create_vector_store(Settings(_env_file=None))
 
 

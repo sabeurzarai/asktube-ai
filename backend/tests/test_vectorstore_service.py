@@ -145,18 +145,18 @@ def test_vector_store_is_built_once_not_per_request():
     assert first is second
 
 
-def test_get_vectorstore_service_returns_chroma_when_backend_unset(monkeypatch):
-    # This is the defect this file's fix exists for: an unset VECTOR_BACKEND must
-    # resolve to a ChromaVectorStoreService, not a VectorStoreService wrapping a
-    # Chroma service it cannot drive (Chroma has upsert_chunks/similarity_search(
-    # query: str), not replace_video_chunks/similarity_search(query_embedding)).
+def test_get_vectorstore_service_returns_vectorstoreservice_when_backend_unset_and_no_database(monkeypatch):
+    # Task 2b-ii: when VECTOR_BACKEND is unset, it now derives from DATABASE_URL.
+    # Unset + no DATABASE_URL → memory backend → VectorStoreService (not Chroma).
+    # The chroma selection branch in get_vectorstore_service is now unreachable.
     import app.services.vectorstore_service as module
 
     monkeypatch.setattr(module.settings, "vector_backend", None)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     get_vectorstore_service.cache_clear()
     try:
         service = get_vectorstore_service()
-        assert isinstance(service, ChromaVectorStoreService)
+        assert isinstance(service, VectorStoreService)
     finally:
         get_vectorstore_service.cache_clear()
 

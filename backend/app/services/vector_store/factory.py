@@ -7,14 +7,16 @@ from app.services.vector_store.postgres import PgVectorStore
 
 
 def resolve_vector_backend(config: Settings) -> str:
-    """The single place the 'chroma' default lives.
+    """Explicit VECTOR_BACKEND wins; otherwise derive from DATABASE_URL.
 
-    Both the service factory (which decides between ChromaVectorStoreService and
-    VectorStoreService) and this store factory (which only ever builds a
-    VectorStore) resolve the backend name through this function, so they cannot
-    disagree about what an unset VECTOR_BACKEND means.
+    Deriving rather than defaulting to "memory" is deliberate: forgetting the
+    variable in a deployment that has a database would otherwise start an
+    in-memory store that resets on every restart and looks like it is working.
+    A bare checkout has no DATABASE_URL and still needs no infrastructure.
     """
-    return (config.vector_backend or "chroma").lower()
+    if config.vector_backend:
+        return config.vector_backend.lower()
+    return "pgvector" if config.database_url else "memory"
 
 
 def create_vector_store(config: Settings) -> VectorStore:
@@ -49,11 +51,11 @@ def create_vector_store(config: Settings) -> VectorStore:
 
     if backend == "chroma":
         raise ValueError(
-            "VECTOR_BACKEND=chroma is not a VectorStore: ChromaVectorStoreService "
-            "is selected in app.services.vectorstore_service.get_vectorstore_service(), "
-            "not by create_vector_store()."
+            "VECTOR_BACKEND=chroma is no longer supported: ChromaDB was removed in "
+            "favour of Postgres + pgvector. Unset VECTOR_BACKEND to derive the "
+            "backend from DATABASE_URL."
         )
 
     raise ValueError(
-        f"Unknown VECTOR_BACKEND {backend!r}. Expected 'chroma', 'pgvector' or 'memory'."
+        f"Unknown VECTOR_BACKEND {backend!r}. Expected 'pgvector' or 'memory'."
     )
