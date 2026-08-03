@@ -1,5 +1,7 @@
 # Learnings
 
+- **2026-08-03** — In a SQLAlchemy `text()` string, never write `:name::type`. `text()` deliberately skips a `:name` that is immediately followed by another colon so it does not mangle PostgreSQL's `::` cast operator — so the bind is never substituted, Postgres receives a literal `:` and fails with `syntax error at or near ":"`. Use `cast(:name as type)` instead. The giveaway is a rendered statement where some params became `$1/$2` but one still shows `:name`. Found in `vector_store/postgres.py`; the same file binds pgvector embeddings as `cast(:embedding as text)::vector`, which works — asyncpg does NOT need `register_vector` when the parameter is routed through a core type first.
+- **2026-08-03** — Run the backend suite from `backend/`, never from the repo root. `Settings` uses `env_file=".env"` resolved against the CWD, so `python -m pytest` at the root loads the real root `.env` (Webshare proxy creds, CORS, etc.) instead of test defaults — 12 tests in `test_transcript_service.py` and friends fail with what looks like a regression but is only environment bleed. `cd backend && OPENAI_API_KEY=dummy python -m pytest` is the correct invocation; the giveaway is failure paths printed as `backend/tests/...` rather than `tests/...`.
 - **2026-08-03** — Supabase Free pauses a project after 7 days of low activity and
   requires a MANUAL restore; paused beyond 90 days it is deleted permanently. Neon
   behaves differently (5-minute scale-to-zero, automatic resume) — if the demo goes
