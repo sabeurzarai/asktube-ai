@@ -6,19 +6,28 @@ from app.services.vector_store.memory import InMemoryVectorStore
 from app.services.vector_store.postgres import PgVectorStore
 
 
+def resolve_vector_backend(config: Settings) -> str:
+    """The single place the 'chroma' default lives.
+
+    Both the service factory (which decides between ChromaVectorStoreService and
+    VectorStoreService) and this store factory (which only ever builds a
+    VectorStore) resolve the backend name through this function, so they cannot
+    disagree about what an unset VECTOR_BACKEND means.
+    """
+    return (config.vector_backend or "chroma").lower()
+
+
 def create_vector_store(config: Settings) -> VectorStore:
     """Select the vector store backend.
 
-    Resolution order:
-      1. VECTOR_BACKEND, if set
-      2. chroma — while ChromaVectorStoreService still exists
-
-    Phase 2b-ii replaces rule 2 with the derived default (DATABASE_URL set →
-    pgvector, else memory), once Chroma is gone and defaulting to it is no longer
-    possible. Until then, an unset VECTOR_BACKEND must not change which backend
-    production uses.
+    Only 'memory' and 'pgvector' are built here — both are real VectorStore
+    implementations. 'chroma' is not: ChromaVectorStoreService does not satisfy
+    the VectorStore protocol (it has upsert_chunks/similarity_search(query: str),
+    not replace_video_chunks/similarity_search(query_embedding: list[float])), so
+    selecting it is a service-layer decision made in
+    app.services.vectorstore_service.get_vectorstore_service(), not here.
     """
-    backend = (config.vector_backend or "chroma").lower()
+    backend = resolve_vector_backend(config)
 
     if backend == "memory":
         return InMemoryVectorStore()
@@ -39,11 +48,11 @@ def create_vector_store(config: Settings) -> VectorStore:
         return PgVectorStore(factory)
 
     if backend == "chroma":
-        # Imported lazily: vectorstore_service imports this module's package, and a
-        # top-level import here would be circular.
-        from app.services.vectorstore_service import ChromaVectorStoreService
-
-        return ChromaVectorStoreService(config)
+        raise ValueError(
+            "VECTOR_BACKEND=chroma is not a VectorStore: ChromaVectorStoreService "
+            "is selected in app.services.vectorstore_service.get_vectorstore_service(), "
+            "not by create_vector_store()."
+        )
 
     raise ValueError(
         f"Unknown VECTOR_BACKEND {backend!r}. Expected 'chroma', 'pgvector' or 'memory'."

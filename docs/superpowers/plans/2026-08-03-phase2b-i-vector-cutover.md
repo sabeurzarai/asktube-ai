@@ -151,6 +151,14 @@ git commit -m "feat: add VECTOR_COLLECTION_NAME and VECTOR_BACKEND settings"
 
 **Why Chroma is still the default.** The derived default (`DATABASE_URL` set → pgvector) arrives in Phase 2b-ii, once Chroma is deleted and there is no safe fallback left. Defaulting to it now would make merging this plan switch production retrieval, with the first real request also being the first test of the wired path.
 
+**Why `create_vector_store` never builds Chroma.** `ChromaVectorStoreService` does not
+satisfy the `VectorStore` protocol: it has `upsert_chunks`/`similarity_search(query:
+str)`, not the protocol's `replace_video_chunks`/`similarity_search(query_embedding:
+list[float])`. So the store factory only ever builds a real `VectorStore` — `memory`
+or `pgvector` — and raises for `"chroma"`, explicit or defaulted. Choosing Chroma is a
+service-layer decision, made in `get_vectorstore_service()` (Task 3), which returns
+`ChromaVectorStoreService` unchanged instead of asking this factory for a store.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `backend/tests/test_vector_store_factory.py`:
@@ -161,7 +169,6 @@ import pytest
 from app.core.config import Settings
 from app.services.vector_store import InMemoryVectorStore, PgVectorStore
 from app.services.vector_store.factory import create_vector_store
-from app.services.vectorstore_service import ChromaVectorStoreService
 
 
 def test_explicit_memory_backend_wins(monkeypatch):
@@ -178,13 +185,20 @@ def test_explicit_pgvector_backend(monkeypatch):
     assert isinstance(store, PgVectorStore)
 
 
-def test_default_is_chroma_while_chroma_exists(monkeypatch):
-    # Deliberate: the derived default arrives in Phase 2b-ii, after Chroma is
-    # deleted. Until then, merging must not switch production backends.
+def test_chroma_backend_raises_naming_the_service_layer(monkeypatch):
+    # create_vector_store() only ever builds a VectorStore. Chroma isn't one, so
+    # selecting it here — explicitly or via the default — must raise rather than
+    # return an object that fails the protocol on the first real call.
+    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
+    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
+        create_vector_store(Settings(_env_file=None))
+
+
+def test_default_also_raises_since_default_resolves_to_chroma(monkeypatch):
     monkeypatch.delenv("VECTOR_BACKEND", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
-    store = create_vector_store(Settings(_env_file=None))
-    assert isinstance(store, ChromaVectorStoreService)
+    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
+        create_vector_store(Settings(_env_file=None))
 
 
 def test_unknown_backend_raises_naming_the_value(monkeypatch):
@@ -221,19 +235,28 @@ from app.services.vector_store.memory import InMemoryVectorStore
 from app.services.vector_store.postgres import PgVectorStore
 
 
+def resolve_vector_backend(config: Settings) -> str:
+    """The single place the 'chroma' default lives.
+
+    Both the service factory (which decides between ChromaVectorStoreService and
+    VectorStoreService) and this store factory (which only ever builds a
+    VectorStore) resolve the backend name through this function, so they cannot
+    disagree about what an unset VECTOR_BACKEND means.
+    """
+    return (config.vector_backend or "chroma").lower()
+
+
 def create_vector_store(config: Settings) -> VectorStore:
     """Select the vector store backend.
 
-    Resolution order:
-      1. VECTOR_BACKEND, if set
-      2. chroma — while ChromaVectorStoreService still exists
-
-    Phase 2b-ii replaces rule 2 with the derived default (DATABASE_URL set →
-    pgvector, else memory), once Chroma is gone and defaulting to it is no longer
-    possible. Until then, an unset VECTOR_BACKEND must not change which backend
-    production uses.
+    Only 'memory' and 'pgvector' are built here — both are real VectorStore
+    implementations. 'chroma' is not: ChromaVectorStoreService does not satisfy
+    the VectorStore protocol (it has upsert_chunks/similarity_search(query: str),
+    not replace_video_chunks/similarity_search(query_embedding: list[float])), so
+    selecting it is a service-layer decision made in
+    app.services.vectorstore_service.get_vectorstore_service(), not here.
     """
-    backend = (config.vector_backend or "chroma").lower()
+    backend = resolve_vector_backend(config)
 
     if backend == "memory":
         return InMemoryVectorStore()
@@ -254,11 +277,11 @@ def create_vector_store(config: Settings) -> VectorStore:
         return PgVectorStore(factory)
 
     if backend == "chroma":
-        # Imported lazily: vectorstore_service imports this module's package, and a
-        # top-level import here would be circular.
-        from app.services.vectorstore_service import ChromaVectorStoreService
-
-        return ChromaVectorStoreService(config)
+        raise ValueError(
+            "VECTOR_BACKEND=chroma is not a VectorStore: ChromaVectorStoreService "
+            "is selected in app.services.vectorstore_service.get_vectorstore_service(), "
+            "not by create_vector_store()."
+        )
 
     raise ValueError(
         f"Unknown VECTOR_BACKEND {backend!r}. Expected 'chroma', 'pgvector' or 'memory'."
@@ -274,8 +297,8 @@ cd backend && OPENAI_API_KEY=dummy python -m pytest tests/test_vector_store_fact
 ```
 Expected: PASS, 5 tests.
 
-If a circular-import error appears, the lazy import inside the `chroma` branch is the
-fix — do not restructure the packages.
+No circular import to work around: this module no longer references
+`vectorstore_service` at all, lazily or otherwise.
 
 - [ ] **Step 5: Commit**
 
@@ -297,12 +320,12 @@ every Prometheus observation and analytics event in them must appear in the new 
 - Test: `backend/tests/test_vectorstore_service.py`
 
 **Interfaces:**
-- Consumes: `create_vector_store` (Task 2), `Settings.resolved_collection_name` (Task 1).
+- Consumes: `create_vector_store`, `resolve_vector_backend` (Task 2), `Settings.resolved_collection_name` (Task 1).
 - Produces:
   - `VectorStoreService(config: Settings, store: VectorStore)`
   - `async upsert_chunks(chunks: list[TranscriptChunk]) -> list[str]`
   - `async similarity_search(query: str, limit: int = 5, video_id: str | None = None) -> list[VectorSearchResult]`
-  - `get_vectorstore_service() -> VectorStoreService` — same name as today, so the two `app.dependency_overrides[get_vectorstore_service]` in the test suite keep working.
+  - `get_vectorstore_service() -> ChromaVectorStoreService | VectorStoreService` — same name as today, so the two `app.dependency_overrides[get_vectorstore_service]` in the test suite keep working. Chosen at this layer, not inside `create_vector_store`, because Chroma is not a `VectorStore`.
 
   Task 4 annotates against `VectorStoreService`.
 
@@ -495,51 +518,85 @@ class VectorStoreService:
 ```
 
 Add the imports it needs at the top of the module: `VectorStore` from
-`app.services.vector_store.base` and `create_vector_store` from
-`app.services.vector_store.factory`.
+`app.services.vector_store.base` and `create_vector_store`, `resolve_vector_backend`
+from `app.services.vector_store.factory`.
 
-Then replace the existing factory function. **The store must be built once, not per
-request** — `get_vectorstore_service` is a FastAPI `Depends`, so it runs on every
-request, and the pgvector branch constructs an `AsyncEngine` with its own connection
-pool. Building it per request would open a new pool per request and exhaust Supabase's
-connection limit within seconds:
+Then replace the existing factory function with a single cached **service** factory,
+not a cached store factory. The backend decision — Chroma or a real `VectorStore` —
+has to happen at this layer, because `ChromaVectorStoreService` does not satisfy the
+`VectorStore` protocol (`upsert_chunks`/`similarity_search(query: str)`, not
+`replace_video_chunks`/`similarity_search(query_embedding: list[float])`). Pushing
+that decision down into `create_vector_store()` was the original defect: an unset
+`VECTOR_BACKEND` made `create_vector_store` return a `ChromaVectorStoreService` typed
+as a `VectorStore`, and `VectorStoreService` would call `.replace_video_chunks(...)`
+on it and raise `AttributeError` on the first real request — masked in tests only
+because every route and tool test overrides the dependency with a fake. Deciding here
+instead means the chroma branch returns `ChromaVectorStoreService` unchanged, and only
+the non-chroma branches ever call `create_vector_store()`.
+
+**The result must still be built once, not per request** — `get_vectorstore_service`
+is a FastAPI `Depends`, so it runs on every request, and the pgvector branch
+constructs an `AsyncEngine` with its own connection pool. Building it per request
+would open a new pool per request and exhaust Supabase's connection limit within
+seconds:
 
 ```python
 @lru_cache
-def get_vector_store() -> VectorStore:
+def get_vectorstore_service() -> ChromaVectorStoreService | VectorStoreService:
     """Built once per process.
 
-    get_vectorstore_service() below is a FastAPI dependency and runs per request;
-    create_vector_store() allocates an engine and connection pool for the pgvector
-    backend, so calling it per request would leak pools until the database refuses
-    connections.
+    This is a FastAPI dependency and runs per request. The pgvector backend
+    allocates an AsyncEngine and connection pool, so constructing it per request
+    would leak pools until the database refuses connections.
+
+    ChromaVectorStoreService is returned unchanged when the backend is chroma:
+    it is not a VectorStore (no replace_video_chunks, and its similarity_search
+    takes text rather than a vector), but it exposes the same public methods as
+    VectorStoreService, so consumers are unaffected.
     """
-    return create_vector_store(settings)
-
-
-def get_vectorstore_service() -> VectorStoreService:
-    return VectorStoreService(settings, get_vector_store())
+    if resolve_vector_backend(settings) == "chroma":
+        return ChromaVectorStoreService(settings)
+    return VectorStoreService(settings, create_vector_store(settings))
 ```
 
 Import `lru_cache` from `functools`. This mirrors `get_settings()` in
 `app/core/config.py`, which uses the same idiom for the same reason.
 
-The service wrapper itself stays cheap to construct per request — it holds only a
-config reference and the shared store — so only the store is cached.
+There is no separate cached store factory: caching the *service* (rather than caching
+a store and wrapping it fresh per call, as an earlier draft of this plan did) is what
+lets the chroma branch skip `create_vector_store()` entirely while still only
+allocating one pgvector engine per process.
 
 **Add a test proving it:**
 
 ```python
 def test_vector_store_is_built_once_not_per_request():
-    from app.services.vectorstore_service import get_vector_store
-
-    get_vector_store.cache_clear()
-    first = get_vector_store()
-    second = get_vector_store()
+    get_vectorstore_service.cache_clear()
+    first = get_vectorstore_service()
+    second = get_vectorstore_service()
     # Same object: a FastAPI Depends runs per request, and the pgvector backend
     # allocates a connection pool per construction.
     assert first is second
 ```
+
+**And a test proving the defect stays fixed** — that an unset `VECTOR_BACKEND`
+resolves to `ChromaVectorStoreService`, not a `VectorStoreService` wrapping one:
+
+```python
+def test_get_vectorstore_service_returns_chroma_when_backend_unset(monkeypatch):
+    import app.services.vectorstore_service as module
+
+    monkeypatch.setattr(module.settings, "vector_backend", None)
+    get_vectorstore_service.cache_clear()
+    try:
+        assert isinstance(get_vectorstore_service(), ChromaVectorStoreService)
+    finally:
+        get_vectorstore_service.cache_clear()
+```
+
+(`monkeypatch.setattr` on the module-level `settings` singleton, not
+`monkeypatch.setenv` — `settings` is constructed once at import time via
+`get_settings()`, so an env var set after that has no effect on it.)
 
 - [ ] **Step 4: Run the tests**
 

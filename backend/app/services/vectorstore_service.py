@@ -14,7 +14,7 @@ from app.schemas.chunks import TranscriptChunk
 from app.schemas.vectorstore import VectorSearchResult
 from app.services.embedding_provider import create_embeddings, require_embedding_credentials
 from app.services.vector_store.base import VectorStore
-from app.services.vector_store.factory import create_vector_store
+from app.services.vector_store.factory import create_vector_store, resolve_vector_backend
 
 
 class ChromaVectorStoreService:
@@ -304,16 +304,18 @@ class VectorStoreService:
 
 
 @lru_cache
-def get_vector_store() -> VectorStore:
+def get_vectorstore_service() -> ChromaVectorStoreService | VectorStoreService:
     """Built once per process.
 
-    get_vectorstore_service() below is a FastAPI dependency and runs per request;
-    create_vector_store() allocates an engine and connection pool for the pgvector
-    backend, so calling it per request would leak pools until the database refuses
-    connections.
+    This is a FastAPI dependency and runs per request. The pgvector backend
+    allocates an AsyncEngine and connection pool, so constructing it per request
+    would leak pools until the database refuses connections.
+
+    ChromaVectorStoreService is returned unchanged when the backend is chroma:
+    it is not a VectorStore (no replace_video_chunks, and its similarity_search
+    takes text rather than a vector), but it exposes the same public methods as
+    VectorStoreService, so consumers are unaffected.
     """
-    return create_vector_store(settings)
-
-
-def get_vectorstore_service() -> VectorStoreService:
-    return VectorStoreService(settings, get_vector_store())
+    if resolve_vector_backend(settings) == "chroma":
+        return ChromaVectorStoreService(settings)
+    return VectorStoreService(settings, create_vector_store(settings))

@@ -51,13 +51,29 @@ The Phase 2 spec's derived default (`DATABASE_URL` set → pgvector) would mean 
 the cutover switches production retrieval immediately, making the first real request
 after deploy also the first test of the wired path.
 
-Instead the factory resolves:
+Instead the backend name resolves the same way everywhere, via
+`resolve_vector_backend(config)`:
 
 ```
 VECTOR_BACKEND explicit    → that backend
-otherwise, Chroma present  → chroma                                  (this phase)
-otherwise                  → DATABASE_URL set ? pgvector : memory    (after deletion)
+otherwise                  → "chroma"                                (this phase)
 ```
+
+But the resolved name is consumed at two different layers, because Chroma is not a
+`VectorStore`: `ChromaVectorStoreService` exposes `upsert_chunks`/`similarity_search
+(query: str)`, not the protocol's `replace_video_chunks`/`similarity_search
+(query_embedding: list[float])`. So:
+
+- `create_vector_store(config)` (`app/services/vector_store/factory.py`) only ever
+  builds a real `VectorStore` — `memory` or `pgvector`. If resolution lands on
+  `"chroma"` (explicitly or by default), it raises `ValueError` naming the service
+  layer, rather than returning something that fails the protocol.
+- `get_vectorstore_service()` (`app/services/vectorstore_service.py`) is the one
+  place that chooses between `ChromaVectorStoreService` and `VectorStoreService`.
+  When the resolved backend is `"chroma"` it returns `ChromaVectorStoreService`
+  unchanged; otherwise it wraps `create_vector_store(config)` in a
+  `VectorStoreService`. Both branches expose the same public methods, so consumers
+  are unaffected either way.
 
 So merging changes nothing. Production flips by setting one variable on Render, and
 rolls back by unsetting it. The derived default — and the silent-amnesia protection
@@ -128,8 +144,10 @@ their annotation changed.
   that no test would catch. Failing loudly is correct for a case that cannot legitimately
   occur.
 
-`get_vectorstore_service()` keeps its name and is the FastAPI dependency; it builds
-the service with the store from `create_vector_store(settings)`. The existing
+`get_vectorstore_service()` keeps its name and is the FastAPI dependency. It resolves
+the backend via `resolve_vector_backend(settings)`: `"chroma"` returns
+`ChromaVectorStoreService(settings)` directly; anything else wraps
+`create_vector_store(settings)` in a `VectorStoreService`. The existing
 `app.dependency_overrides[get_vectorstore_service]` in two test modules keeps working.
 
 The nine annotation sites:
@@ -205,11 +223,12 @@ is the rollback.
 
 ## Open risks
 
-**Ingestion semantics change on merge of 2b-i.** Even with Chroma as the default, the
-orchestrator calls `replace_video_chunks`, so re-ingesting a video now deletes its old
-chunks first. That is the intended bug fix, but it is a live behaviour change arriving
-one step earlier than the backend switch. It is safe — re-ingest already produced the
-correct chunk set; only the stale leftovers disappear.
+**The replace-on-ingest fix only takes effect once `VECTOR_BACKEND=pgvector` is set.**
+With the default (`"chroma"`) resolving to `ChromaVectorStoreService` unchanged —
+Chroma's own `upsert_chunks` still calls `collection.upsert`, not
+`replace_video_chunks` — re-ingesting a video keeps today's upsert semantics until
+the backend is flipped. The stale-chunk fix is real, but it ships inert alongside
+Chroma and only activates on the pgvector path, same as everything else in this phase.
 
 **The `metadata` round-trip narrows.** Chroma stored arbitrary scalar metadata;
 `transcript_chunks` has typed `source` and `language` columns. Any other metadata key

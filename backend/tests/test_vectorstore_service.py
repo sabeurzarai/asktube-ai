@@ -4,7 +4,9 @@ from app.core.config import Settings
 from app.schemas.chunks import TranscriptChunk
 from app.services.vector_store import InMemoryVectorStore
 from app.services.vectorstore_service import (
+    ChromaVectorStoreService,
     VectorStoreService,
+    get_vectorstore_service,
     parse_chroma_query_result,
     to_chroma_metadata,
 )
@@ -135,11 +137,37 @@ async def test_chunks_that_already_have_embeddings_are_not_re_embedded(monkeypat
 
 
 def test_vector_store_is_built_once_not_per_request():
-    from app.services.vectorstore_service import get_vector_store
-
-    get_vector_store.cache_clear()
-    first = get_vector_store()
-    second = get_vector_store()
+    get_vectorstore_service.cache_clear()
+    first = get_vectorstore_service()
+    second = get_vectorstore_service()
     # Same object: a FastAPI Depends runs per request, and the pgvector backend
     # allocates a connection pool per construction.
     assert first is second
+
+
+def test_get_vectorstore_service_returns_chroma_when_backend_unset(monkeypatch):
+    # This is the defect this file's fix exists for: an unset VECTOR_BACKEND must
+    # resolve to a ChromaVectorStoreService, not a VectorStoreService wrapping a
+    # Chroma service it cannot drive (Chroma has upsert_chunks/similarity_search(
+    # query: str), not replace_video_chunks/similarity_search(query_embedding)).
+    import app.services.vectorstore_service as module
+
+    monkeypatch.setattr(module.settings, "vector_backend", None)
+    get_vectorstore_service.cache_clear()
+    try:
+        service = get_vectorstore_service()
+        assert isinstance(service, ChromaVectorStoreService)
+    finally:
+        get_vectorstore_service.cache_clear()
+
+
+def test_get_vectorstore_service_returns_vectorstoreservice_for_memory_backend(monkeypatch):
+    import app.services.vectorstore_service as module
+
+    monkeypatch.setattr(module.settings, "vector_backend", "memory")
+    get_vectorstore_service.cache_clear()
+    try:
+        service = get_vectorstore_service()
+        assert isinstance(service, VectorStoreService)
+    finally:
+        get_vectorstore_service.cache_clear()

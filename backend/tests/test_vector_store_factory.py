@@ -3,7 +3,6 @@ import pytest
 from app.core.config import Settings
 from app.services.vector_store import InMemoryVectorStore, PgVectorStore
 from app.services.vector_store.factory import create_vector_store
-from app.services.vectorstore_service import ChromaVectorStoreService
 
 
 def test_explicit_memory_backend_wins(monkeypatch):
@@ -20,13 +19,25 @@ def test_explicit_pgvector_backend(monkeypatch):
     assert isinstance(store, PgVectorStore)
 
 
-def test_default_is_chroma_while_chroma_exists(monkeypatch):
-    # Deliberate: the derived default arrives in Phase 2b-ii, after Chroma is
-    # deleted. Until then, merging must not switch production backends.
+def test_chroma_backend_raises_naming_the_service_layer(monkeypatch):
+    # ChromaVectorStoreService does not satisfy the VectorStore protocol (it has
+    # upsert_chunks/similarity_search(query: str), not
+    # replace_video_chunks/similarity_search(query_embedding: list[float])), so
+    # create_vector_store() must never build one. Selecting Chroma is a
+    # service-layer decision in get_vectorstore_service().
+    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
+    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
+        create_vector_store(Settings(_env_file=None))
+
+
+def test_default_also_raises_since_default_resolves_to_chroma(monkeypatch):
+    # An unset VECTOR_BACKEND resolves to "chroma" (resolve_vector_backend's
+    # default), and create_vector_store() rejects "chroma" just like an explicit
+    # setting would — it never silently builds a non-VectorStore.
     monkeypatch.delenv("VECTOR_BACKEND", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
-    store = create_vector_store(Settings(_env_file=None))
-    assert isinstance(store, ChromaVectorStoreService)
+    with pytest.raises(ValueError, match="service layer|get_vectorstore_service"):
+        create_vector_store(Settings(_env_file=None))
 
 
 def test_unknown_backend_raises_naming_the_value(monkeypatch):
