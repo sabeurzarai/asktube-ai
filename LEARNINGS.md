@@ -1,5 +1,6 @@
 # Learnings
 
+- **2026-08-03** — Run the backend suite from `backend/`, never from the repo root. `Settings` uses `env_file=".env"` resolved against the CWD, so `python -m pytest` at the root loads the real root `.env` (Webshare proxy creds, CORS, etc.) instead of test defaults — 12 tests in `test_transcript_service.py` and friends fail with what looks like a regression but is only environment bleed. `cd backend && OPENAI_API_KEY=dummy python -m pytest` is the correct invocation; the giveaway is failure paths printed as `backend/tests/...` rather than `tests/...`.
 - **2026-08-03** — Supabase Free pauses a project after 7 days of low activity and
   requires a MANUAL restore; paused beyond 90 days it is deleted permanently. Neon
   behaves differently (5-minute scale-to-zero, automatic resume) — if the demo goes
