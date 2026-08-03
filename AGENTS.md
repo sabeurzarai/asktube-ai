@@ -48,9 +48,12 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **144 passed, 4 skipped**
-  (skips = local-embedding tests without extras; with extras installed all run).
-  Set `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
+- Backend: `cd backend && python -m pytest` → expect **157 passed, 1 skipped** with
+  local-embedding extras installed, or **153 passed, 5 skipped** without them
+  (the extra 4 skips = local-embedding tests without extras; the remaining 1 skip
+  present either way is the Alembic migration test, which skips unless
+  `TEST_DATABASE_URL` is set). Set `OPENAI_API_KEY` to any dummy value first or
+  9 speech tests fail with 503.
 - Frontend: `cd frontend && npx tsc --noEmit && npm test` → expect **79 passed**.
 - Frontend voice tests stub `@/lib/api` wholesale with `vi.mock` — `lib/analytics.ts`
   must NOT import from `lib/api.ts` (duplicate the resolver logic, keep in sync).
