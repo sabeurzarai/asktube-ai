@@ -1,5 +1,13 @@
+import pytest
+
+from app.core.config import Settings
 from app.schemas.chunks import TranscriptChunk
-from app.services.vectorstore_service import parse_chroma_query_result, to_chroma_metadata
+from app.services.vector_store import InMemoryVectorStore
+from app.services.vectorstore_service import (
+    VectorStoreService,
+    parse_chroma_query_result,
+    to_chroma_metadata,
+)
 
 
 def make_chunk() -> TranscriptChunk:
@@ -58,3 +66,80 @@ def test_parse_chroma_query_result() -> None:
     assert results[0].chunk_id == "video123:0:abc"
     assert results[0].segment_indices == [3, 4, 5]
     assert results[0].distance == 0.12
+
+
+def make_orchestrator_chunk(video_id: str, index: int, embedding=None) -> TranscriptChunk:
+    return TranscriptChunk(
+        chunk_id=f"{video_id}-{index}",
+        index=index,
+        video_id=video_id,
+        text=f"chunk {index}",
+        start_seconds=float(index),
+        end_seconds=float(index + 1),
+        segment_indices=[index],
+        token_estimate=3,
+        metadata={"source": "captions", "language": "en"},
+        embedding=embedding,
+    )
+
+
+def make_service(store=None) -> VectorStoreService:
+    return VectorStoreService(Settings(_env_file=None), store or InMemoryVectorStore())
+
+
+async def test_upsert_with_no_chunks_is_a_noop_and_returns_empty():
+    # Must NOT clear anything: no video is named, so there is nothing to replace.
+    store = InMemoryVectorStore()
+    await store.replace_video_chunks("vid1", [make_orchestrator_chunk("vid1", 0, [1.0, 0.0])])
+    service = make_service(store)
+
+    assert await service.upsert_chunks([]) == []
+    assert len(await store.similarity_search([1.0, 0.0], limit=5, video_id="vid1")) == 1
+
+
+async def test_upsert_rejects_chunks_spanning_multiple_videos():
+    service = make_service()
+    chunks = [make_orchestrator_chunk("vid1", 0, [1.0, 0.0]), make_orchestrator_chunk("vid2", 0, [1.0, 0.0])]
+    with pytest.raises(ValueError, match="vid1"):
+        await service.upsert_chunks(chunks)
+
+
+async def test_upsert_replaces_previous_chunks_for_the_video():
+    store = InMemoryVectorStore()
+    service = make_service(store)
+    await service.upsert_chunks([make_orchestrator_chunk("vid1", 0, [1.0, 0.0])])
+    await service.upsert_chunks([make_orchestrator_chunk("vid1", 9, [1.0, 0.0])])
+
+    results = await store.similarity_search([1.0, 0.0], limit=10, video_id="vid1")
+    assert [r.chunk_id for r in results] == ["vid1-9"]
+
+
+async def test_chunks_that_already_have_embeddings_are_not_re_embedded(monkeypatch):
+    calls = {"count": 0}
+
+    class FakeEmbeddings:
+        async def aembed_documents(self, texts):
+            calls["count"] += 1
+            return [[1.0, 0.0] for _ in texts]
+
+        async def aembed_query(self, text):
+            calls["count"] += 1
+            return [1.0, 0.0]
+
+    import app.services.vectorstore_service as module
+
+    monkeypatch.setattr(module, "create_embeddings", lambda _config: FakeEmbeddings())
+    service = make_service()
+    await service.upsert_chunks([make_orchestrator_chunk("vid1", 0, [1.0, 0.0])])
+    assert calls["count"] == 0
+
+
+def test_vector_store_is_built_once_not_per_request():
+    from app.services.vectorstore_service import get_vector_store
+
+    get_vector_store.cache_clear()
+    first = get_vector_store()
+    second = get_vector_store()
+    # Same object: a FastAPI Depends runs per request, and the pgvector backend
+    # allocates a connection pool per construction.
+    assert first is second
