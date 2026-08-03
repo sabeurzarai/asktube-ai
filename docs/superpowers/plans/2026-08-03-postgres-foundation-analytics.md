@@ -354,6 +354,18 @@ cd backend && pip install alembic==1.14.0
 
 Create `backend/tests/test_migrations.py`:
 
+(The test function must be synchronous `def`, not `async def`. `pytest.ini`
+sets `asyncio_mode = auto`, so an `async def` test body would run inside an
+already-running event loop; `command.upgrade()` internally calls
+`asyncio.run(run_async_migrations())` in `alembic/env.py`'s online branch,
+and `asyncio.run()` raises `RuntimeError: cannot be called from a running
+event loop` if one is already active. Keeping the test sync — and running the
+async table-verification in its own `asyncio.run(...)` call after
+`command.upgrade()` returns — avoids the nested loop. The table check also
+uses SQLAlchemy's inspector via `run_sync` instead of querying
+`information_schema.tables` directly, so it works dialect-agnostically and
+can be verified locally against SQLite, not only against Postgres.)
+
 ```python
 import os
 
@@ -369,8 +381,16 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def test_migrations_create_analytics_tables():
-    from sqlalchemy import text
+def test_migrations_create_analytics_tables():
+    # Synchronous on purpose: pytest.ini sets asyncio_mode = auto, which would
+    # otherwise run this test inside an already-running event loop, and
+    # alembic's online migration path internally calls asyncio.run(...) —
+    # which raises "cannot be called from a running event loop" if one is
+    # already active. Keeping this test sync means no loop is running when
+    # command.upgrade() reaches that call.
+    import asyncio
+
+    import sqlalchemy
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from alembic import command
@@ -380,16 +400,16 @@ async def test_migrations_create_analytics_tables():
     config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
     command.upgrade(config, "head")
 
-    engine = create_async_engine(TEST_DATABASE_URL)
-    async with engine.connect() as connection:
-        result = await connection.execute(
-            text(
-                "select table_name from information_schema.tables "
-                "where table_schema = 'public'"
+    async def _get_tables() -> set[str]:
+        engine = create_async_engine(TEST_DATABASE_URL)
+        async with engine.connect() as connection:
+            tables = await connection.run_sync(
+                lambda sync_conn: set(sqlalchemy.inspect(sync_conn).get_table_names())
             )
-        )
-        tables = {row[0] for row in result}
-    await engine.dispose()
+        await engine.dispose()
+        return tables
+
+    tables = asyncio.run(_get_tables())
 
     assert {"analytics_events", "video_metrics", "chat_metrics", "rag_metrics"} <= tables
 ```
