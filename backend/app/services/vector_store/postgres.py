@@ -1,4 +1,4 @@
-from sqlalchemy import bindparam, delete, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.chunks import TranscriptChunk
@@ -47,7 +47,17 @@ class PgVectorStore:
                             " language, embedding) "
                             "values (:chunk_id, :video_id, :chunk_index, :text, "
                             " :start_seconds, :end_seconds, :segment_indices, "
-                            " :token_estimate, :source, :language, :embedding)"
+                            " :token_estimate, :source, :language, "
+                            # asyncpg has no codec for the custom `vector` OID unless
+                            # pgvector.asyncpg.register_vector() runs on the connection,
+                            # which this store cannot force (the session factory/engine
+                            # is injected). Binding straight to `:embedding` would make
+                            # Postgres resolve the parameter's type as `vector`, and
+                            # asyncpg would fail to encode the Python str for it. Casting
+                            # through `text` first keeps the bind parameter on a core
+                            # type asyncpg already knows how to encode; the `::vector`
+                            # cast then happens server-side on the resulting text value.
+                            "cast(:embedding as text)::vector)"
                         ),
                         [
                             {
@@ -75,13 +85,20 @@ class PgVectorStore:
         limit: int = 5,
         video_id: str | None = None,
     ) -> list[VectorSearchResult]:
+        # Both `<=>` operands below cast the bind parameter through `text` before
+        # `::vector` for the same reason as the INSERT in replace_video_chunks:
+        # asyncpg only has codecs for core types. A bare `:query_embedding::vector`
+        # does NOT dodge this — Postgres assigns the parameter the cast's *target*
+        # type, so the parameter is still typed `vector` and asyncpg fails to encode
+        # the Python str. Routing it through `text` first keeps asyncpg's inferred
+        # parameter type on something it already knows how to send.
         statement = text(
             "select chunk_id, video_id, text, start_seconds, end_seconds, "
             "       segment_indices, source, language, "
-            "       embedding <=> :query_embedding as distance "
+            "       embedding <=> cast(:query_embedding as text)::vector as distance "
             "from transcript_chunks "
             "where (:video_id::text is null or video_id = :video_id) "
-            "order by embedding <=> :query_embedding "
+            "order by embedding <=> cast(:query_embedding as text)::vector "
             "limit :limit"
         )
 
