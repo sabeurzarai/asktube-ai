@@ -42,9 +42,14 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `backend/app/services/vector_store/factory.py`. Unset defaults to `chroma` while
   ChromaDB still exists; Phase 2b-ii changes that to derive from `DATABASE_URL`.
   `VectorStoreService` in `vectorstore_service.py` owns embedding generation and
-  delegates persistence to the selected store. Re-ingesting a video now REPLACES its
+  delegates persistence to the selected store. Note `ChromaVectorStoreService` is NOT
+  a `VectorStore` (it has `upsert_chunks` / `similarity_search(query: str)`), so
+  `create_vector_store()` raises for `chroma` and the choice is made one level up in
+  `get_vectorstore_service()`, which returns the Chroma service unchanged.
+  **On the pgvector and memory backends only**, re-ingesting a video REPLACES its
   chunks rather than upserting, so a chunking-parameter change no longer leaves stale
-  chunks behind.
+  chunks behind. The chroma path is unchanged code and still upserts — so this fix
+  takes effect when you set `VECTOR_BACKEND=pgvector`, not when this merges.
 - Database: `DATABASE_URL` is the single async SQLAlchemy URL for all persistent
   stores and takes priority over `ANALYTICS_DATABASE_URL`. Unset, everything runs
   on SQLite as before. Postgres schema is owned by Alembic — run migrations
