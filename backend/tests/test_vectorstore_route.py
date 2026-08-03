@@ -72,3 +72,63 @@ def test_ingest_transcript_chunks_route() -> None:
     assert payload["video_id"] == "video123"
     assert payload["chunk_count"] == 1
     assert payload["stored_chunk_ids"] == ["video123:0:test"]
+
+
+def test_search_returns_502_naming_a_paused_database() -> None:
+    class FailingVectorStoreService:
+        async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
+            raise OSError("connection refused")
+
+    app.dependency_overrides[get_vectorstore_service] = lambda: FailingVectorStoreService()
+    client = TestClient(app)
+
+    response = client.get("/api/vectorstore/search", params={"q": "anything"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    detail = response.json()["detail"].lower()
+    # The message must name the likely cause, not just "error" - a paused Supabase
+    # project fails exactly like a network fault and costs hours otherwise.
+    assert "database" in detail
+    assert "paused" in detail
+
+
+def test_ingest_returns_502_when_embedding_dimension_mismatches() -> None:
+    class MismatchingVectorStoreService:
+        async def upsert_chunks(self, chunks):  # noqa: ANN001
+            raise ValueError("embedding dimension mismatch for video123:0:test: 384 != 1536")
+
+    app.dependency_overrides[get_chunking_service] = lambda: FakeChunkingService()
+    app.dependency_overrides[get_vectorstore_service] = lambda: MismatchingVectorStoreService()
+    client = TestClient(app)
+    body = {
+        "transcript": TranscriptResponse(
+            video_id="video123",
+            language="en",
+            source="youtube_transcript_api",
+            segment_count=1,
+            full_text="Stored chunk.",
+            segments=[
+                TranscriptSegment(
+                    index=0,
+                    start_seconds=0.0,
+                    end_seconds=5.0,
+                    duration_seconds=5.0,
+                    text="Stored chunk.",
+                )
+            ],
+        ).model_dump(),
+    }
+
+    response = client.post("/api/vectorstore/transcripts", json=body)
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    detail = response.json()["detail"].lower()
+    # Must name the actual cause (a dimension mismatch) and the fix (re-ingest),
+    # not just say "error" - this happens when EMBEDDING_PROVIDER changes without
+    # wiping and re-ingesting the store.
+    assert "dimension mismatch" in detail
+    assert "re-ingest" in detail
