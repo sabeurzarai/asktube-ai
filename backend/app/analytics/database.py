@@ -44,6 +44,14 @@ async def analytics_session() -> AsyncIterator[AsyncSession]:
 
 
 async def init_analytics_db() -> None:
+    """Create tables automatically for local SQLite only.
+
+    Postgres schema is owned by Alembic. Running create_all there as well would
+    mean two mechanisms managing one schema, which drifts without warning.
+    """
+    if settings.resolved_analytics_url.startswith("postgresql"):
+        return
+
     from app.analytics.models import Base
 
     async with engine.begin() as connection:
