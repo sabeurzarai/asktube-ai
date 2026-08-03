@@ -641,9 +641,24 @@ Record the list. Every hit **outside `app/services/vectorstore_service.py` and `
 
 - [ ] **Step 2: Replace the annotations**
 
-In each consumer file, change the import and every annotation from
-`ChromaVectorStoreService` to `VectorStoreService`. Do not change any call
-expression — the method names and signatures are identical.
+**First add a type alias** in `app/services/vectorstore_service.py`, next to
+`get_vectorstore_service`:
+
+```python
+# Either service can be returned depending on VECTOR_BACKEND. They expose the same
+# public methods, so consumers are indifferent — but annotating them as one concrete
+# class would misdescribe what they actually receive. Phase 2b-ii deletes
+# ChromaVectorStoreService and this alias collapses to VectorStoreService.
+AnyVectorStoreService = ChromaVectorStoreService | VectorStoreService
+```
+
+Then in each consumer file, change the import and every annotation from
+`ChromaVectorStoreService` to `AnyVectorStoreService`. Do not change any call
+expression — the method names and signatures are identical on both classes.
+
+Annotating them as `VectorStoreService` would be wrong: `get_vectorstore_service()`
+returns `ChromaVectorStoreService` whenever the backend resolves to chroma, which is
+the default and therefore production's current state.
 
 Also update the three `collection_name=settings.chroma_collection_name` sites in
 `app/api/routes/vectorstore.py` to `settings.resolved_collection_name`.
