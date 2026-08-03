@@ -1,7 +1,64 @@
+import os
+
 import pytest
 
 from app.schemas.chunks import TranscriptChunk
-from app.services.vector_store import InMemoryVectorStore
+from app.services.vector_store import InMemoryVectorStore, PgVectorStore
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+
+BACKENDS = ["memory"]
+if TEST_DATABASE_URL:
+    BACKENDS.append("pgvector")
+
+# The contract vectors are 3-dimensional for readability; production is 1536.
+# The pgvector fixture narrows the column for the run and restores it after.
+CONTRACT_DIMENSIONS = 3
+PRODUCTION_DIMENSIONS = 1536
+
+
+@pytest.fixture(params=BACKENDS)
+async def store(request):
+    """Yield each backend in turn.
+
+    WARNING: the pgvector branch mutates the transcript_chunks schema and deletes
+    all its rows. TEST_DATABASE_URL must never point at a production database.
+    """
+    if request.param == "memory":
+        yield InMemoryVectorStore()
+        return
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with factory() as session:
+        async with session.begin():
+            # Each test starts empty: the contract asserts ordering and isolation,
+            # which leftover rows would silently break.
+            await session.execute(text("delete from transcript_chunks"))
+            await session.execute(
+                text(
+                    "alter table transcript_chunks "
+                    f"alter column embedding type vector({CONTRACT_DIMENSIONS})"
+                )
+            )
+
+    try:
+        yield PgVectorStore(factory, embedding_dimensions=CONTRACT_DIMENSIONS)
+    finally:
+        async with factory() as session:
+            async with session.begin():
+                await session.execute(text("delete from transcript_chunks"))
+                await session.execute(
+                    text(
+                        "alter table transcript_chunks "
+                        f"alter column embedding type vector({PRODUCTION_DIMENSIONS})"
+                    )
+                )
+        await engine.dispose()
 
 
 def make_chunk(video_id: str, index: int, embedding: list[float], text: str = "") -> TranscriptChunk:
@@ -17,14 +74,6 @@ def make_chunk(video_id: str, index: int, embedding: list[float], text: str = ""
         metadata={"source": "captions", "language": "en"},
         embedding=embedding,
     )
-
-
-# Task 6 appends the pgvector backend here. Test bodies stay unchanged.
-@pytest.fixture(params=["memory"])
-def store(request):
-    if request.param == "memory":
-        return InMemoryVectorStore()
-    raise AssertionError(f"unknown backend {request.param}")
 
 
 async def test_stored_chunk_is_retrievable(store):
