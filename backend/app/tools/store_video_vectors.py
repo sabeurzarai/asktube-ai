@@ -2,7 +2,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from app.schemas.chunks import TranscriptChunk
-from app.services.vectorstore_service import ChromaVectorStoreService
+from app.services.vectorstore_service import AnyVectorStoreService
 
 
 class StoreVideoVectorsInput(BaseModel):
@@ -11,7 +11,7 @@ class StoreVideoVectorsInput(BaseModel):
     )
 
 
-def make_store_video_vectors_tool(service: ChromaVectorStoreService) -> StructuredTool:
+def make_store_video_vectors_tool(service: AnyVectorStoreService) -> StructuredTool:
     async def _run(chunks: list[dict]) -> dict:
         chunk_objects = [TranscriptChunk.model_validate(chunk) for chunk in chunks]
         stored_ids = await service.upsert_chunks(chunk_objects)

@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.services.chunking_service import ChunkingOptions, ChunkingService
 from app.services.transcript_service import TranscriptFetchOptions, TranscriptService
-from app.services.vectorstore_service import ChromaVectorStoreService
+from app.services.vectorstore_service import AnyVectorStoreService
 
 
 class IngestVideoInput(BaseModel):
@@ -14,7 +14,7 @@ class IngestVideoInput(BaseModel):
 def make_ingest_video_tool(
     transcript_service: TranscriptService,
     chunking_service: ChunkingService,
-    vectorstore_service: ChromaVectorStoreService,
+    vectorstore_service: AnyVectorStoreService,
 ) -> StructuredTool:
     async def _run(video_id: str, language: str = "en") -> dict:
         transcript = await transcript_service.get_transcript(

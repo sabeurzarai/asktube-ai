@@ -61,3 +61,35 @@ def test_pool_settings_have_free_tier_defaults(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.db_pool_size == 5
     assert settings.db_max_overflow == 5
+
+
+# collection_name is a ChromaDB concept that leaked into the public API response
+# schemas. The field stays; the setting behind it stops naming a backend that is
+# being removed. CHROMA_COLLECTION_NAME remains a fallback so deployed
+# environments keep working without an edit.
+
+def test_vector_collection_name_takes_priority(monkeypatch):
+    monkeypatch.setenv("VECTOR_COLLECTION_NAME", "new_name")
+    monkeypatch.setenv("CHROMA_COLLECTION_NAME", "old_name")
+    settings = Settings(_env_file=None)
+    assert settings.resolved_collection_name == "new_name"
+
+
+def test_chroma_collection_name_used_as_fallback(monkeypatch):
+    monkeypatch.delenv("VECTOR_COLLECTION_NAME", raising=False)
+    monkeypatch.setenv("CHROMA_COLLECTION_NAME", "old_name")
+    settings = Settings(_env_file=None)
+    assert settings.resolved_collection_name == "old_name"
+
+
+def test_collection_name_default_when_neither_set(monkeypatch):
+    monkeypatch.delenv("VECTOR_COLLECTION_NAME", raising=False)
+    monkeypatch.delenv("CHROMA_COLLECTION_NAME", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.resolved_collection_name == "asktube_videos"
+
+
+def test_vector_backend_defaults_to_none(monkeypatch):
+    monkeypatch.delenv("VECTOR_BACKEND", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.vector_backend is None

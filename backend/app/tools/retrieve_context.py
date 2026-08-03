@@ -1,7 +1,7 @@
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from app.services.vectorstore_service import ChromaVectorStoreService
+from app.services.vectorstore_service import AnyVectorStoreService
 
 
 class RetrieveContextInput(BaseModel):
@@ -18,7 +18,7 @@ class RetrieveContextInput(BaseModel):
     )
 
 
-def make_retrieve_context_tool(service: ChromaVectorStoreService) -> StructuredTool:
+def make_retrieve_context_tool(service: AnyVectorStoreService) -> StructuredTool:
     async def _run(query: str, limit: int = 5, video_id: str | None = None) -> dict:
         results = await service.similarity_search(query=query, limit=limit, video_id=video_id)
         return {

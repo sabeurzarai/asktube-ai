@@ -2,7 +2,7 @@ from contextlib import suppress
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, WebSocket, WebSocketDisconnect, status
 
 from app.analytics.prometheus import PROCESSING_DURATION, WEBSOCKET_CONNECTIONS, WEBSOCKET_FAILURES
 from app.analytics.schemas import VideoMetricCreate
@@ -20,18 +20,47 @@ from app.services.transcript_service import (
     get_transcript_service,
 )
 from app.services.vectorstore_service import (
-    ChromaVectorStoreService,
+    AnyVectorStoreService,
     get_vectorstore_service,
 )
 
 router = APIRouter()
 
 
+def _vectorstore_connection_error() -> HTTPException:
+    # A paused Supabase project fails exactly like a network fault (connection
+    # refused/reset), so a generic 500 costs hours of debugging. Name the likely
+    # cause and the fix directly.
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=(
+            "Vector store unavailable. If DATABASE_URL points at Supabase, the "
+            "project may be paused — Free plan projects pause after 7 days of "
+            "low activity and must be restored from the dashboard."
+        ),
+    )
+
+
+def _vectorstore_value_error(exc: ValueError) -> HTTPException:
+    # PgVectorStore.replace_video_chunks raises ValueError naming the offending
+    # sizes on an embedding-dimension mismatch (EMBEDDING_PROVIDER switched
+    # without a wipe + re-ingest); VectorStoreService.upsert_chunks raises the
+    # same type for chunks spanning multiple videos. Both messages are useful
+    # to the caller as-is, so one handler covers both.
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=(
+            f"Vector store rejected the chunks: {exc}. Switching EMBEDDING_PROVIDER "
+            "changes the vector dimension and requires wiping and re-ingesting."
+        ),
+    )
+
+
 @router.post("/vectorstore/transcripts", response_model=IngestVideoResponse)
 async def ingest_transcript_chunks(
     request: IngestTranscriptRequest,
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     chunking_start = time.perf_counter()
@@ -49,7 +78,12 @@ async def ingest_transcript_chunks(
     )
     chunking_ms = (time.perf_counter() - chunking_start) * 1000
     storage_start = time.perf_counter()
-    stored_chunk_ids = await vectorstore_service.upsert_chunks(chunks)
+    try:
+        stored_chunk_ids = await vectorstore_service.upsert_chunks(chunks)
+    except ValueError as exc:
+        raise _vectorstore_value_error(exc) from exc
+    except (OSError, ConnectionError) as exc:
+        raise _vectorstore_connection_error() from exc
     storage_ms = (time.perf_counter() - storage_start) * 1000
     processing_ms = (time.perf_counter() - started_at) * 1000
     PROCESSING_DURATION.observe(processing_ms / 1000)
@@ -69,7 +103,7 @@ async def ingest_transcript_chunks(
 
     return IngestVideoResponse(
         video_id=request.transcript.video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         chunk_count=len(stored_chunk_ids),
         embedding_model=embedding_model or settings.embedding_model,
         stored_chunk_ids=stored_chunk_ids,
@@ -92,7 +126,7 @@ async def ingest_video_transcript(
     overlap_segments: int = Query(default=1, ge=0, le=5),
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     transcript_start = time.perf_counter()
@@ -112,7 +146,12 @@ async def ingest_video_transcript(
     )
     embedding_ms = (time.perf_counter() - chunking_start) * 1000
     storage_start = time.perf_counter()
-    stored_chunk_ids = await vectorstore_service.upsert_chunks(chunks)
+    try:
+        stored_chunk_ids = await vectorstore_service.upsert_chunks(chunks)
+    except ValueError as exc:
+        raise _vectorstore_value_error(exc) from exc
+    except (OSError, ConnectionError) as exc:
+        raise _vectorstore_connection_error() from exc
     storage_ms = (time.perf_counter() - storage_start) * 1000
     processing_ms = (time.perf_counter() - started_at) * 1000
     PROCESSING_DURATION.observe(processing_ms / 1000)
@@ -136,7 +175,7 @@ async def ingest_video_transcript(
 
     return IngestVideoResponse(
         video_id=video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         chunk_count=len(stored_chunk_ids),
         embedding_model=embedding_model or settings.embedding_model,
         stored_chunk_ids=stored_chunk_ids,
@@ -157,7 +196,7 @@ async def ingest_video_stream(
     ],
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> None:
     """WebSocket endpoint that streams real ingestion progress events.
 
@@ -248,14 +287,17 @@ async def search_vectorstore(
     q: Annotated[str, Query(min_length=2, max_length=500)],
     video_id: str | None = Query(default=None, min_length=6, max_length=32),
     limit: int = Query(default=5, ge=1, le=20),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> VectorSearchResponse:
     started_at = time.perf_counter()
-    results = await vectorstore_service.similarity_search(
-        query=q,
-        limit=limit,
-        video_id=video_id,
-    )
+    try:
+        results = await vectorstore_service.similarity_search(
+            query=q,
+            limit=limit,
+            video_id=video_id,
+        )
+    except (OSError, ConnectionError) as exc:
+        raise _vectorstore_connection_error() from exc
     get_analytics_service().safe_track_background(
         get_analytics_service().track_event_safe(
             "similarity_search_completed",
@@ -267,7 +309,7 @@ async def search_vectorstore(
     return VectorSearchResponse(
         query=q,
         video_id=video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         result_count=len(results),
         results=results,
     )

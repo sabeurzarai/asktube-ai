@@ -50,6 +50,22 @@ class Settings(BaseSettings):
         default="asktube_videos",
         alias="CHROMA_COLLECTION_NAME",
     )
+    vector_collection_name: str | None = Field(
+        default=None,
+        alias="VECTOR_COLLECTION_NAME",
+        description=(
+            "Logical name reported as collection_name in API responses. Replaces "
+            "CHROMA_COLLECTION_NAME, which stays as a fallback."
+        ),
+    )
+    vector_backend: str | None = Field(
+        default=None,
+        alias="VECTOR_BACKEND",
+        description=(
+            "Explicit vector store backend: 'chroma', 'pgvector' or 'memory'. "
+            "Unset resolves via create_vector_store()."
+        ),
+    )
     audio_cache_dir: str = Field(default="data/audio_cache", alias="AUDIO_CACHE_DIR")
     ffmpeg_location: str | None = Field(default=None, alias="FFMPEG_LOCATION")
     webshare_proxy_username: str | None = Field(
@@ -185,6 +201,11 @@ class Settings(BaseSettings):
     def resolved_analytics_url(self) -> str:
         """DATABASE_URL wins; ANALYTICS_DATABASE_URL is the backwards-compatible fallback."""
         return self.database_url or self.analytics_database_url
+
+    @property
+    def resolved_collection_name(self) -> str:
+        """VECTOR_COLLECTION_NAME wins; CHROMA_COLLECTION_NAME is the fallback."""
+        return self.vector_collection_name or self.chroma_collection_name
 
 
 @lru_cache
