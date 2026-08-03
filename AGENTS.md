@@ -40,11 +40,20 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   uses `NoDecode` — do not remove it, plain values crash startup otherwise).
 - Database: `DATABASE_URL` is the single async SQLAlchemy URL for all persistent
   stores and takes priority over `ANALYTICS_DATABASE_URL`. Unset, everything runs
-  on SQLite as before. Postgres schema is owned by Alembic (`cd backend && python
-  -m alembic upgrade head`); `init_analytics_db()` auto-creates tables for SQLite
-  only. When using Supabase's transaction pooler (port 6543), `statement_cache_size`
-  is forced to 0 — asyncpg's prepared statements do not survive a transaction
-  pooler and fail intermittently under concurrency.
+  on SQLite as before. Postgres schema is owned by Alembic — run migrations
+  against the direct/session endpoint (port 5432), NOT the Supavisor transaction
+  pooler (port 6543) the running app uses: `cd backend && python -m alembic
+  upgrade head`. `init_analytics_db()` auto-creates tables for SQLite only.
+  Migrations are a manual pre-deploy step — the Docker image ships `alembic.ini`
+  and `alembic/`, but nothing runs them automatically at container start.
+  Every Postgres engine (app AND Alembic, unconditionally — not just when a
+  pooler is in front) sets three asyncpg connect args: `statement_cache_size=0`,
+  `prepared_statement_cache_size=0`, and a UUID-based
+  `prepared_statement_name_func`. `statement_cache_size=0` alone is NOT enough —
+  it only disables asyncpg's own cache, while SQLAlchemy's asyncpg dialect keeps
+  a second prepared-statement layer (its own cache size, defaulting to 100, plus
+  a numeric name generator) that still needs disabling, or pooled connections
+  collide with `DuplicatePreparedStatementError`.
 
 ## Testing (verify before claiming done)
 

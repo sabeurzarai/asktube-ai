@@ -163,8 +163,17 @@ def test_postgres_gets_pool_sizing_and_disabled_statement_cache():
     assert kwargs["pool_size"] == 7
     assert kwargs["max_overflow"] == 3
     assert kwargs["pool_pre_ping"] is True
-    # Supavisor (Supabase transaction pooler) cannot carry prepared statements.
-    assert kwargs["connect_args"] == {"statement_cache_size": 0}
+    # statement_cache_size=0 alone only disables asyncpg's own cache.
+    # SQLAlchemy's asyncpg dialect keeps a second prepared-statement layer
+    # (its own cache size + a numeric name generator) that must also be
+    # neutralized, or pooled connections collide on generated statement names.
+    connect_args = kwargs["connect_args"]
+    assert connect_args["statement_cache_size"] == 0
+    assert connect_args["prepared_statement_cache_size"] == 0
+    name_func = connect_args["prepared_statement_name_func"]
+    assert callable(name_func)
+    # The property that matters: successive calls must not collide.
+    assert name_func() != name_func()
 
 
 def test_sqlite_omits_pool_sizing_and_connect_args():
@@ -175,6 +184,17 @@ def test_sqlite_omits_pool_sizing_and_connect_args():
     assert "connect_args" not in kwargs
     assert kwargs["pool_pre_ping"] is True
 ```
+
+> **Correction (post-review):** the block above already reflects the fix from
+> the final-review pass, not the original draft. The original asserted
+> `kwargs["connect_args"] == {"statement_cache_size": 0}`, on the theory that
+> disabling asyncpg's own statement cache was sufficient. It is not:
+> SQLAlchemy's asyncpg dialect keeps its own prepared-statement layer on top
+> (`prepared_statement_cache_size`, defaulting to 100, plus a numeric name
+> generator via `_prepared_statement_name_func`), so two pooled client
+> connections multiplexed onto one pooler backend could still collide on the
+> same generated name and raise `DuplicatePreparedStatementError`. See Step 3
+> below for the corresponding fix in `build_engine_kwargs`.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -192,6 +212,7 @@ Replace lines 1–18 of `backend/app/analytics/database.py` with:
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -209,10 +230,22 @@ def build_engine_kwargs(url: str, config: Settings) -> dict[str, Any]:
     if url.startswith("postgresql"):
         kwargs["pool_size"] = config.db_pool_size
         kwargs["max_overflow"] = config.db_max_overflow
-        # Prepared statements do not survive a transaction pooler. Left enabled,
-        # this fails intermittently with DuplicatePreparedStatementError under
-        # concurrency rather than failing loudly at startup.
-        kwargs["connect_args"] = {"statement_cache_size": 0}
+        # Prepared statements do not survive a transaction pooler, and disabling
+        # asyncpg's own cache (statement_cache_size=0) is NOT enough on its own:
+        # SQLAlchemy's asyncpg dialect keeps a second layer on top of that --
+        # its _prepare step always calls connection.prepare(..., name=...) via
+        # a numeric name generator, and prepared_statement_cache_size still
+        # defaults to 100 unless set here too. Two pooled client connections
+        # multiplexed onto one pooler backend can then collide on the same
+        # generated "__asyncpg_stmt_N__" name. All three settings below are
+        # required together, and applied unconditionally to every Postgres
+        # engine this app builds -- not only when a pooler happens to be in
+        # front of it, since the SQLAlchemy-side collision isn't pooler-specific.
+        kwargs["connect_args"] = {
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+        }
 
     return kwargs
 
@@ -227,6 +260,15 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 ```
+
+> **Correction (post-review):** the block above is the corrected version. The
+> original shipped `connect_args = {"statement_cache_size": 0}` only, believing
+> that disabled asyncpg's prepared-statement caching entirely. A final-review
+> pass found that SQLAlchemy's asyncpg dialect keeps its own
+> prepared-statement bookkeeping independent of asyncpg's cache, so the
+> original left a real collision path open under concurrency. `backend/alembic/env.py`
+> (Task 4, Step 5 below) was also missing this `connect_args` entirely — it now
+> reuses `build_engine_kwargs` so both engines stay in sync.
 
 Leave `analytics_session` and `init_analytics_db` below unchanged for now; Task 5 modifies the latter.
 
@@ -397,7 +439,11 @@ def test_migrations_create_analytics_tables():
     from alembic.config import Config
 
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    # ConfigParser's BasicInterpolation rejects a lone '%' -- and percent-encoded
+    # passwords (e.g. p%40ss, which .env.example instructs users to produce)
+    # contain exactly that. Escaping to %% here is undone by ConfigParser's own
+    # get() reader, so the engine still receives the correct, unescaped URL.
+    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL.replace("%", "%%"))
     command.upgrade(config, "head")
 
     async def _get_tables() -> set[str]:
@@ -413,6 +459,13 @@ def test_migrations_create_analytics_tables():
 
     assert {"analytics_events", "video_metrics", "chat_metrics", "rag_metrics"} <= tables
 ```
+
+> **Correction (post-review):** the `.replace("%", "%%")` call above was added
+> after a final-review pass found the original `set_main_option` call crashed
+> with `ValueError: invalid interpolation syntax` on any percent-encoded
+> password -- exactly the kind of value `.env.example`'s own guidance produces.
+> `backend/alembic/env.py` (Step 5 below) had the identical bug at its own
+> `set_main_option` call site and is corrected the same way.
 
 - [ ] **Step 3: Run to verify it skips cleanly**
 
@@ -477,6 +530,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
+from app.analytics.database import build_engine_kwargs
 from app.analytics.models import Base
 from app.core.config import settings
 
@@ -488,7 +542,15 @@ if config.config_file_name is not None:
 # The app's settings are the single source of truth for the URL unless a caller
 # overrode it explicitly (the migration test does exactly that).
 if not config.get_main_option("sqlalchemy.url", None):
-    config.set_main_option("sqlalchemy.url", settings.resolved_analytics_url)
+    # Alembic's Config wraps configparser.ConfigParser with BasicInterpolation,
+    # which raises ValueError on a lone '%' -- and .env.example instructs users
+    # to percent-encode passwords containing @ : / #, so any such password
+    # crashes here unescaped. Escaping to %% is undone by ConfigParser's own
+    # get() reader, so run_migrations_online()/offline() still see the correct,
+    # unescaped URL. Do not "simplify" this away.
+    config.set_main_option(
+        "sqlalchemy.url", settings.resolved_analytics_url.replace("%", "%%")
+    )
 
 target_metadata = Base.metadata
 
@@ -511,10 +573,23 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    # Reuse the app's own connect_args (statement_cache_size=0,
+    # prepared_statement_cache_size=0, a UUID name func) so the migration
+    # engine gets the same DuplicatePreparedStatementError protection as the
+    # runtime engine in app/analytics/database.py -- NullPool alone (below)
+    # only avoids Alembic's own connection pool, it does not touch asyncpg's
+    # or SQLAlchemy's prepared-statement layers.
+    connect_args = build_engine_kwargs(settings.resolved_analytics_url, settings).get(
+        "connect_args"
+    )
+    engine_kwargs: dict[str, object] = {"poolclass": pool.NullPool}
+    if connect_args:
+        engine_kwargs["connect_args"] = connect_args
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+        **engine_kwargs,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
@@ -530,6 +605,21 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 ```
+
+> **Correction (post-review):** two bugs were found in the original version of
+> this file during a final whole-branch review, both fixed above:
+> 1. `config.set_main_option("sqlalchemy.url", settings.resolved_analytics_url)`
+>    crashed with `ValueError: invalid interpolation syntax` on any
+>    percent-encoded password, because Alembic's `Config` wraps
+>    `configparser.ConfigParser` with `BasicInterpolation`, which treats a lone
+>    `%` as the start of an interpolation token. The `.env.example` template
+>    explicitly tells users to percent-encode passwords containing `@ : / #`,
+>    so this was a self-inflicted crash on documented input.
+> 2. The async engine was built with no `connect_args` at all, so the migration
+>    engine had none of the `DuplicatePreparedStatementError` protection given
+>    to the runtime engine — it now calls `build_engine_kwargs` (Task 2) to get
+>    the same three asyncpg settings, keeping both engines in sync by
+>    construction instead of by copy-paste.
 
 - [ ] **Step 6: Create `backend/alembic/versions/0001_initial_analytics.py`**
 
@@ -763,11 +853,31 @@ Append, keeping the placeholder-only convention already used in that file:
 # Single async SQLAlchemy URL for all persistent stores. Unset = SQLite
 # (current behaviour). Supabase gives this in Project Settings → Database.
 # The password must be percent-encoded if it contains @ : / or #.
-# Port 6543 is the Supavisor transaction pooler; 5432 is a direct connection.
-# DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.PROJECT.supabase.co:6543/postgres
+#
+# App runtime: use the Supavisor transaction pooler (port 6543). Its host is a
+# separate pooler endpoint -- NOT db.PROJECT.supabase.co -- and the username
+# carries the project ref (postgres.PROJECT_REF, not plain "postgres"):
+# DATABASE_URL=postgresql+asyncpg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+#
+# Migrations (alembic upgrade head): run against the direct/session endpoint
+# on port 5432 instead -- the transaction pooler does not support the
+# session-level behaviour Alembic's DDL needs. Set DATABASE_URL to this only
+# for the migration run, then switch back to the pooler URL above:
+# DATABASE_URL=postgresql+asyncpg://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres
 DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=5
 ```
+
+> **Correction (post-review):** the block above is the corrected version. The
+> original single-line template paired a direct-connection host
+> (`db.PROJECT.supabase.co`) with the pooler port (`6543`) and a bare
+> `postgres` username — a combination that does not correspond to any real
+> Supabase connection string. Per Supabase's Supavisor docs, the pooler lives
+> on a different host (`aws-0-REGION.pooler.supabase.com`) and the pooler
+> username carries the project ref (`postgres.PROJECT_REF`). The original also
+> never said which endpoint migrations should use; `db.PROJECT.supabase.co`
+> resolves to IPv6 by default, which matters because Render's free tier cannot
+> reach it, so that guidance had to be explicit.
 
 - [ ] **Step 2: Document the configuration in `CLAUDE.md` and `AGENTS.md`**
 
@@ -776,12 +886,28 @@ Add to the "Configuration" section of both files (they are kept in sync):
 ```markdown
 - Database: `DATABASE_URL` is the single async SQLAlchemy URL for all persistent
   stores and takes priority over `ANALYTICS_DATABASE_URL`. Unset, everything runs
-  on SQLite as before. Postgres schema is owned by Alembic (`cd backend && python
-  -m alembic upgrade head`); `init_analytics_db()` auto-creates tables for SQLite
-  only. When using Supabase's transaction pooler (port 6543), `statement_cache_size`
-  is forced to 0 — asyncpg's prepared statements do not survive a transaction
-  pooler and fail intermittently under concurrency.
+  on SQLite as before. Postgres schema is owned by Alembic — run migrations
+  against the direct/session endpoint (port 5432), NOT the Supavisor transaction
+  pooler (port 6543) the running app uses: `cd backend && python -m alembic
+  upgrade head`. `init_analytics_db()` auto-creates tables for SQLite only.
+  Migrations are a manual pre-deploy step — the Docker image ships `alembic.ini`
+  and `alembic/`, but nothing runs them automatically at container start.
+  Every Postgres engine (app AND Alembic, unconditionally — not just when a
+  pooler is in front) sets three asyncpg connect args: `statement_cache_size=0`,
+  `prepared_statement_cache_size=0`, and a UUID-based
+  `prepared_statement_name_func`. `statement_cache_size=0` alone is NOT enough —
+  it only disables asyncpg's own cache, while SQLAlchemy's asyncpg dialect keeps
+  a second prepared-statement layer (its own cache size, defaulting to 100, plus
+  a numeric name generator) that still needs disabling, or pooled connections
+  collide with `DuplicatePreparedStatementError`.
 ```
+
+> **Correction (post-review):** the bullet above now also states the
+> corrected port guidance (migrations use 5432, not 6543), the corrected
+> `statement_cache_size` claim (three settings are required, not one, and
+> unconditionally rather than only "when using the pooler"), and the new
+> manual-migration-step note tied to the Dockerfile fix in Task 4's Step 4
+> equivalent (`backend/Dockerfile` now copies `alembic.ini` and `alembic/`).
 
 - [ ] **Step 3: Add the restore step to `DEMO_DAY_RUNBOOK.md`**
 

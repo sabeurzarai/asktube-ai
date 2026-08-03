@@ -4,9 +4,18 @@
   requires a MANUAL restore; paused beyond 90 days it is deleted permanently. Neon
   behaves differently (5-minute scale-to-zero, automatic resume) — if the demo goes
   unused for weeks, that difference matters more than any latency number. Also:
-  asyncpg caches prepared statements, which a transaction pooler (Supabase port
-  6543) cannot carry — set `statement_cache_size=0` or hit intermittent
-  `DuplicatePreparedStatementError` under concurrency, never at startup.
+  asyncpg caches prepared statements, and disabling only its own cache
+  (`statement_cache_size=0`) is NOT sufficient — SQLAlchemy's asyncpg dialect
+  keeps a second prepared-statement layer on top (its own
+  `prepared_statement_cache_size`, defaulting to 100, plus a numeric name
+  generator), so pooled connections can still collide on `__asyncpg_stmt_N__`
+  and raise `DuplicatePreparedStatementError` under concurrency, never at
+  startup. Fix needs all three: `statement_cache_size=0`,
+  `prepared_statement_cache_size=0`, and a UUID-based
+  `prepared_statement_name_func`. Apply unconditionally to every Postgres
+  engine (app AND Alembic) — the SQLAlchemy-side collision isn't specific to
+  Supabase's transaction pooler, so it isn't safe to gate the fix on "am I
+  behind a pooler".
 - **2026-08-03** — `asktube-ai.duckdns.org` timed out from this PC only (other machines + `asktube-ai.vercel.app` were fine). Cause was a leftover `hosts` line `18.157.233.122 asktube-ai.duckdns.org` — the terminated EC2 IP — added by hand during the July DNS cutover and never removed; it silently overrides correct public DNS forever. Diagnosis order that works: resolve via 8.8.8.8/1.1.1.1 AND via the local resolver and compare — if they disagree, suspect `hosts`. The fingerprint is a nonsense TTL in `Get-DnsClientCache` (571335 s vs the record's real 60 s): Windows loads hosts entries into the DNS cache with an artificially huge TTL. Never conclude "the site is down" from one machine.
 - **2026-08-03** — Editing `hosts` on this PC needs more than elevation: Avast (`AvastSvc`/`AvastUI`/`AvastNM`) holds the file open, so an admin shell still fails with `IOException: being used by another process` — NOT `Access denied`. Worse, `Set-Content` truncates before writing, so the failed write left the file at **0 bytes**, wiping the Docker Desktop and `gen-webserver.local` entries. Back the file up first, and prefer read-into-variable then `[System.IO.File]::WriteAllLines`. A browser screenshot is not proof of a fix here — a failed navigation can leave the previously loaded page (and its URL) in the tab; always verify the tab's final URL, not the pixels.
 - **2026-07-05 (RESOLVED same day)** — An external probe reported the live ingest path 502ing with the proxy-hint error, suggesting `WEBSHARE_PROXY_URL` was missing on Render. Re-verified at 18:00: `POST /api/videos/fWjsdhR3z3c/ingest` returned **200 with 10 chunks stored** — the proxy IS set on Render and working. Lesson kept because the failure mode is real: if ingest ever 502s with that message, the proxy env var is the first thing to check (all three forms valid, `*_URL` takes priority), and a single failed probe can also be a cold-start timeout or a video with disabled transcripts — retry with a known-captioned short video before concluding the env is broken. Demo pre-flight stays in `DEMO_DAY_RUNBOOK.md` step 0.
