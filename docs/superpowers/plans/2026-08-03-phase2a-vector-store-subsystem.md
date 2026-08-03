@@ -472,12 +472,19 @@ async def test_results_are_ordered_nearest_first(store):
 
 
 async def test_limit_is_respected(store):
+    # Insert chunks in REVERSED order (4, 3, 2, 1, 0) so that a backend returning
+    # "the first two inserted" would fail. Only backends that sort before limiting
+    # correctly return [vid1-0, vid1-1] (the two nearest by cosine distance).
     await store.replace_video_chunks(
         "vid1",
-        [make_chunk("vid1", i, [1.0, float(i) / 10, 0.0]) for i in range(5)],
+        [make_chunk("vid1", i, [1.0, float(i) / 10, 0.0]) for i in reversed(range(5))],
     )
     results = await store.similarity_search([1.0, 0.0, 0.0], limit=2)
     assert len(results) == 2
+    assert [r.chunk_id for r in results] == ["vid1-0", "vid1-1"]
+
+
+Asserting both length and exact identity (not just count) is what discriminates "limit before sort" errors — inserting in reversed order ensures a broken backend that truncated before scoring would return different chunk ids.
 
 
 async def test_video_id_filter_isolates_videos(store):
