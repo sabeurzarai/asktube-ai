@@ -28,7 +28,12 @@ def test_migrations_create_analytics_tables():
     from alembic.config import Config
 
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    # Alembic's Config wraps configparser.ConfigParser with BasicInterpolation,
+    # which raises ValueError on a lone '%' -- and percent-encoded passwords
+    # (e.g. p%40ss) contain exactly that. Escaping to %% here is undone by
+    # ConfigParser's own get() reader, so the engine still receives the
+    # correct, unescaped URL. Mirrors backend/alembic/env.py.
+    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL.replace("%", "%%"))
     command.upgrade(config, "head")
 
     async def _get_tables() -> set[str]:

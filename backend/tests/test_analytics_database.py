@@ -9,8 +9,17 @@ def test_postgres_gets_pool_sizing_and_disabled_statement_cache():
     assert kwargs["pool_size"] == 7
     assert kwargs["max_overflow"] == 3
     assert kwargs["pool_pre_ping"] is True
-    # Supavisor (Supabase transaction pooler) cannot carry prepared statements.
-    assert kwargs["connect_args"] == {"statement_cache_size": 0}
+    # statement_cache_size=0 alone only disables asyncpg's own cache.
+    # SQLAlchemy's asyncpg dialect keeps a second prepared-statement layer
+    # (its own cache size + a numeric name generator) that must also be
+    # neutralized, or pooled connections collide on generated statement names.
+    connect_args = kwargs["connect_args"]
+    assert connect_args["statement_cache_size"] == 0
+    assert connect_args["prepared_statement_cache_size"] == 0
+    name_func = connect_args["prepared_statement_name_func"]
+    assert callable(name_func)
+    # The property that matters: successive calls must not collide.
+    assert name_func() != name_func()
 
 
 def test_sqlite_omits_pool_sizing_and_connect_args():
