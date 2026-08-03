@@ -498,11 +498,47 @@ Add the imports it needs at the top of the module: `VectorStore` from
 `app.services.vector_store.base` and `create_vector_store` from
 `app.services.vector_store.factory`.
 
-Then replace the existing factory function:
+Then replace the existing factory function. **The store must be built once, not per
+request** — `get_vectorstore_service` is a FastAPI `Depends`, so it runs on every
+request, and the pgvector branch constructs an `AsyncEngine` with its own connection
+pool. Building it per request would open a new pool per request and exhaust Supabase's
+connection limit within seconds:
 
 ```python
+@lru_cache
+def get_vector_store() -> VectorStore:
+    """Built once per process.
+
+    get_vectorstore_service() below is a FastAPI dependency and runs per request;
+    create_vector_store() allocates an engine and connection pool for the pgvector
+    backend, so calling it per request would leak pools until the database refuses
+    connections.
+    """
+    return create_vector_store(settings)
+
+
 def get_vectorstore_service() -> VectorStoreService:
-    return VectorStoreService(settings, create_vector_store(settings))
+    return VectorStoreService(settings, get_vector_store())
+```
+
+Import `lru_cache` from `functools`. This mirrors `get_settings()` in
+`app/core/config.py`, which uses the same idiom for the same reason.
+
+The service wrapper itself stays cheap to construct per request — it holds only a
+config reference and the shared store — so only the store is cached.
+
+**Add a test proving it:**
+
+```python
+def test_vector_store_is_built_once_not_per_request():
+    from app.services.vectorstore_service import get_vector_store
+
+    get_vector_store.cache_clear()
+    first = get_vector_store()
+    second = get_vector_store()
+    # Same object: a FastAPI Depends runs per request, and the pgvector backend
+    # allocates a connection pool per construction.
+    assert first is second
 ```
 
 - [ ] **Step 4: Run the tests**
