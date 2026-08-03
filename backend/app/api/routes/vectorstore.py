@@ -20,7 +20,7 @@ from app.services.transcript_service import (
     get_transcript_service,
 )
 from app.services.vectorstore_service import (
-    ChromaVectorStoreService,
+    AnyVectorStoreService,
     get_vectorstore_service,
 )
 
@@ -31,7 +31,7 @@ router = APIRouter()
 async def ingest_transcript_chunks(
     request: IngestTranscriptRequest,
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     chunking_start = time.perf_counter()
@@ -69,7 +69,7 @@ async def ingest_transcript_chunks(
 
     return IngestVideoResponse(
         video_id=request.transcript.video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         chunk_count=len(stored_chunk_ids),
         embedding_model=embedding_model or settings.embedding_model,
         stored_chunk_ids=stored_chunk_ids,
@@ -92,7 +92,7 @@ async def ingest_video_transcript(
     overlap_segments: int = Query(default=1, ge=0, le=5),
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     transcript_start = time.perf_counter()
@@ -136,7 +136,7 @@ async def ingest_video_transcript(
 
     return IngestVideoResponse(
         video_id=video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         chunk_count=len(stored_chunk_ids),
         embedding_model=embedding_model or settings.embedding_model,
         stored_chunk_ids=stored_chunk_ids,
@@ -157,7 +157,7 @@ async def ingest_video_stream(
     ],
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> None:
     """WebSocket endpoint that streams real ingestion progress events.
 
@@ -248,7 +248,7 @@ async def search_vectorstore(
     q: Annotated[str, Query(min_length=2, max_length=500)],
     video_id: str | None = Query(default=None, min_length=6, max_length=32),
     limit: int = Query(default=5, ge=1, le=20),
-    vectorstore_service: ChromaVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
 ) -> VectorSearchResponse:
     started_at = time.perf_counter()
     results = await vectorstore_service.similarity_search(
@@ -267,7 +267,7 @@ async def search_vectorstore(
     return VectorSearchResponse(
         query=q,
         video_id=video_id,
-        collection_name=settings.chroma_collection_name,
+        collection_name=settings.resolved_collection_name,
         result_count=len(results),
         results=results,
     )

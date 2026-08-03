@@ -303,6 +303,13 @@ class VectorStoreService:
         return results
 
 
+# Either service can be returned depending on VECTOR_BACKEND. They expose the same
+# public methods, so consumers are indifferent — but annotating them as one concrete
+# class would misdescribe what they actually receive. Phase 2b-ii deletes
+# ChromaVectorStoreService and this alias collapses to VectorStoreService.
+AnyVectorStoreService = ChromaVectorStoreService | VectorStoreService
+
+
 @lru_cache
 def get_vectorstore_service() -> ChromaVectorStoreService | VectorStoreService:
     """Built once per process.
