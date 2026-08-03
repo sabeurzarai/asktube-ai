@@ -151,8 +151,11 @@ def test_get_vectorstore_service_returns_vectorstoreservice_when_backend_unset_a
     # The chroma selection branch in get_vectorstore_service is now unreachable.
     import app.services.vectorstore_service as module
 
+    # Patch the settings object, not the environment: `settings` is an lru_cached
+    # singleton built at import, so delenv() would not affect it and the test would
+    # fail for anyone running the suite with DATABASE_URL exported.
     monkeypatch.setattr(module.settings, "vector_backend", None)
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(module.settings, "database_url", None)
     get_vectorstore_service.cache_clear()
     try:
         service = get_vectorstore_service()
