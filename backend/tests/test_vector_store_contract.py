@@ -5,6 +5,7 @@ import pytest
 from app.core.config import settings
 from app.schemas.chunks import TranscriptChunk
 from app.services.vector_store import InMemoryVectorStore, PgVectorStore
+from tests.conftest import NotAScratchDatabase, reject_non_scratch_database
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
@@ -16,45 +17,6 @@ if TEST_DATABASE_URL:
 # The pgvector fixture narrows the column for the run and restores it after.
 CONTRACT_DIMENSIONS = 3
 PRODUCTION_DIMENSIONS = 1536
-
-
-class NotAScratchDatabase(RuntimeError):
-    """Raised when the pgvector fixture is aimed at a database it must not wipe."""
-
-
-def reject_non_scratch_database(
-    test_database_url: str | None,
-    app_database_url: str | None,
-    existing_row_count: int,
-) -> None:
-    """Refuse to run the destructive pgvector fixture against real data.
-
-    This fixture deletes every row in transcript_chunks and alters the embedding
-    column. A docstring warning is not a safeguard: this project's own verification
-    steps instruct the operator to run
-
-        $env:TEST_DATABASE_URL = $env:DATABASE_URL
-
-    which aims it squarely at production. That is not a hypothetical — it happened,
-    and it emptied the live table.
-
-    Pure function so the guard itself is testable without a database, which matters
-    for a check whose whole job is to fire when no test database is present.
-    """
-    if app_database_url and test_database_url == app_database_url:
-        raise NotAScratchDatabase(
-            "TEST_DATABASE_URL points at the same database as DATABASE_URL. This "
-            "fixture deletes every row in transcript_chunks and alters the embedding "
-            "column. Point it at a scratch database."
-        )
-
-    if existing_row_count:
-        raise NotAScratchDatabase(
-            f"transcript_chunks already holds {existing_row_count} row(s). This "
-            "fixture deletes every row, so it refuses to run against a database "
-            "containing data it did not create. Empty the table deliberately, or "
-            "point TEST_DATABASE_URL at a scratch database."
-        )
 
 
 @pytest.fixture(params=BACKENDS)
@@ -82,7 +44,12 @@ async def store(request):
             await session.execute(text("select count(*) from transcript_chunks"))
         ).scalar_one()
     try:
-        reject_non_scratch_database(TEST_DATABASE_URL, settings.database_url, existing)
+        reject_non_scratch_database(
+            TEST_DATABASE_URL,
+            settings.database_url,
+            existing,
+            table_name="transcript_chunks",
+        )
     except NotAScratchDatabase:
         await engine.dispose()
         raise
@@ -212,45 +179,3 @@ async def test_result_carries_timestamps_and_metadata(store):
     assert result.end_seconds == 40.0
     assert result.segment_indices == [3]
     assert result.metadata["source"] == "captions"
-
-
-# ── The guard itself ──────────────────────────────────────────────────────────
-# Tested as a pure function: a safeguard whose job is to fire when no scratch
-# database is available must not itself require one.
-
-
-def test_guard_rejects_pointing_at_the_application_database():
-    with pytest.raises(NotAScratchDatabase, match="same database as DATABASE_URL"):
-        reject_non_scratch_database(
-            test_database_url="postgresql+asyncpg://u:p@host/db",
-            app_database_url="postgresql+asyncpg://u:p@host/db",
-            existing_row_count=0,
-        )
-
-
-def test_guard_rejects_a_table_that_already_holds_data():
-    # The real incident: the table held a demo video's chunks and the fixture
-    # deleted them. Row count alone is enough to refuse.
-    with pytest.raises(NotAScratchDatabase, match="10 row"):
-        reject_non_scratch_database(
-            test_database_url="postgresql+asyncpg://u:p@scratch/db",
-            app_database_url="postgresql+asyncpg://u:p@prod/db",
-            existing_row_count=10,
-        )
-
-
-def test_guard_allows_a_distinct_and_empty_database():
-    reject_non_scratch_database(
-        test_database_url="postgresql+asyncpg://u:p@scratch/db",
-        app_database_url="postgresql+asyncpg://u:p@prod/db",
-        existing_row_count=0,
-    )
-
-
-def test_guard_allows_an_empty_database_when_the_app_has_none_configured():
-    # Local checkouts have no DATABASE_URL; the row-count check still applies.
-    reject_non_scratch_database(
-        test_database_url="postgresql+asyncpg://u:p@scratch/db",
-        app_database_url=None,
-        existing_row_count=0,
-    )
