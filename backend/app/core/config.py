@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     # ── Embedding provider ─────────────────────────────────────────────────────
     # "openai" (default) or "local". Local mode runs a HuggingFace
     # sentence-transformers model on the CPU — fully free, no API calls, but
-    # changing providers changes vector dimensions: wipe the ChromaDB collection
-    # and re-ingest all videos before querying, or retrieval returns garbage.
+    # changing providers changes vector dimensions: the transcript_chunks column
+    # is a fixed-width vector(N), so switching needs a new migration plus a wipe
+    # and re-ingest of all videos, or retrieval returns garbage.
     embedding_provider: str = Field(default="openai", alias="EMBEDDING_PROVIDER")
     local_embedding_model: str = Field(
         default="sentence-transformers/all-MiniLM-L6-v2",
@@ -61,8 +62,8 @@ class Settings(BaseSettings):
         default=None,
         alias="VECTOR_BACKEND",
         description=(
-            "Explicit vector store backend: 'chroma', 'pgvector' or 'memory'. "
-            "Unset resolves via create_vector_store()."
+            "Explicit vector store backend: 'pgvector' or 'memory'. Unset derives "
+            "from DATABASE_URL: set means pgvector, absent means memory."
         ),
     )
     audio_cache_dir: str = Field(default="data/audio_cache", alias="AUDIO_CACHE_DIR")

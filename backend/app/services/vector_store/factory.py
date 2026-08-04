@@ -22,12 +22,10 @@ def resolve_vector_backend(config: Settings) -> str:
 def create_vector_store(config: Settings) -> VectorStore:
     """Select the vector store backend.
 
-    Only 'memory' and 'pgvector' are built here — both are real VectorStore
-    implementations. 'chroma' is not: ChromaVectorStoreService does not satisfy
-    the VectorStore protocol (it has upsert_chunks/similarity_search(query: str),
-    not replace_video_chunks/similarity_search(query_embedding: list[float])), so
-    selecting it is a service-layer decision made in
-    app.services.vectorstore_service.get_vectorstore_service(), not here.
+    Only 'memory' and 'pgvector' exist. 'chroma' is rejected by name rather than
+    falling into the generic unknown-backend error, so an operator with the value
+    still set in an old environment is told the backend was removed instead of
+    merely that it is unrecognised.
     """
     backend = resolve_vector_backend(config)
 
