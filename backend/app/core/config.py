@@ -42,10 +42,9 @@ class Settings(BaseSettings):
     )
     chunk_max_chars: int = Field(default=1200, alias="CHUNK_MAX_CHARS")
     chunk_overlap_segments: int = Field(default=1, alias="CHUNK_OVERLAP_SEGMENTS")
-    chroma_host: str = Field(default="localhost", alias="CHROMA_HOST")
-    chroma_port: int = Field(default=8001, alias="CHROMA_PORT")
-    chroma_use_http: bool = Field(default=False, alias="CHROMA_USE_HTTP")
-    chroma_persist_dir: str = Field(default="./chroma_data", alias="CHROMA_PERSIST_DIR")
+    # Survives only as a compatibility alias: the ChromaDB backend is gone, but
+    # CHROMA_COLLECTION_NAME remains the fallback behind VECTOR_COLLECTION_NAME
+    # for deployments that still set it (see resolved_collection_name below).
     chroma_collection_name: str = Field(
         default="asktube_videos",
         alias="CHROMA_COLLECTION_NAME",
