@@ -1,0 +1,44 @@
+{
+  "video_id": "fWjsdhR3z3c",
+  "cases": [
+    {
+      "name": "first turn, specific question about arithmetic",
+      "history": [],
+      "question": "How do I do addition in Python?",
+      "expect_chunk_containing": "plus symbol"
+    },
+    {
+      "name": "first turn, specific question about loops",
+      "history": [],
+      "question": "How does a while loop work?",
+      "expect_chunk_containing": "while loop"
+    },
+    {
+      "name": "follow-up referring to the previous answer",
+      "history": [
+        {"role": "user", "content": "What is this video about?"},
+        {"role": "assistant", "content": "This video is about getting started with Python in less than 10 minutes."}
+      ],
+      "question": "And what did you just say it uses?",
+      "expect_chunk_containing": "pycharm"
+    },
+    {
+      "name": "follow-up asking for an example of the previous topic",
+      "history": [
+        {"role": "user", "content": "What does the pass keyword do?"},
+        {"role": "assistant", "content": "pass lets you define a function without writing its logic yet."}
+      ],
+      "question": "give me an example of one",
+      "expect_chunk_containing": "run game"
+    },
+    {
+      "name": "vague follow-up (hallucination risk case)",
+      "history": [
+        {"role": "user", "content": "How does a while loop work?"},
+        {"role": "assistant", "content": "It increments i by one until i reaches five."}
+      ],
+      "question": "and the next one?",
+      "expect_chunk_containing": "break sta"
+    }
+  ]
+}
