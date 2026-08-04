@@ -9,7 +9,7 @@ from app.schemas.agent import AgentChatResponse
 from app.schemas.rag import TimestampCitation
 from app.schemas.vectorstore import VectorSearchResult
 from app.services.agent_service import AgentService, _format_for_context
-from app.services.memory_service import ConversationMemoryService
+from app.services.conversation_store import InMemoryConversationStore
 
 
 # ---------------------------------------------------------------------------
@@ -23,8 +23,8 @@ def make_settings() -> Settings:
     )
 
 
-def make_memory() -> ConversationMemoryService:
-    return ConversationMemoryService(max_messages=8)
+def make_memory() -> InMemoryConversationStore:
+    return InMemoryConversationStore(max_messages=8)
 
 
 def make_tool(name: str, return_value: dict) -> MagicMock:
@@ -200,7 +200,7 @@ def test_agent_appends_memory_when_answer_question_not_called() -> None:
         mock_cls.return_value.bind_tools.return_value = bound
         result = asyncio.run(service.chat("Find python tutorials", video_id=None, session_id=None))
 
-    messages = memory.get_messages(result.session_id)
+    messages = asyncio.run(memory.get_messages(result.session_id))
     assert len(messages) == 2
     assert messages[0].role == "user"
     assert messages[0].content == "Find python tutorials"
@@ -228,14 +228,14 @@ def test_agent_does_not_double_append_memory_when_answer_question_called() -> No
 
     # RAGService (mocked answer_tool) does not actually call memory.append_exchange,
     # so memory should remain empty - AgentService correctly skips the append.
-    messages = memory.get_messages(session_id)
+    messages = asyncio.run(memory.get_messages(session_id))
     assert len(messages) == 0
 
 
 def test_agent_includes_prior_memory_in_context() -> None:
     memory = make_memory()
     session_id = memory.create_session_id()
-    memory.append_exchange(session_id, "Previous question", "Previous answer")
+    asyncio.run(memory.append_exchange(session_id, "Previous question", "Previous answer"))
 
     answer_tool = make_tool("answer_question", make_rag_tool_result())
     service = AgentService(config=make_settings(), tools=[answer_tool], memory=memory)

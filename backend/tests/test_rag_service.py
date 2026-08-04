@@ -1,6 +1,6 @@
 from app.schemas.rag import ChatMessage
 from app.schemas.vectorstore import VectorSearchResult
-from app.services.memory_service import ConversationMemoryService
+from app.services.conversation_store import InMemoryConversationStore
 from app.services.rag_service import build_citations, format_context, format_memory, format_timestamp
 
 
@@ -39,14 +39,14 @@ def test_build_citations_deduplicates_chunks() -> None:
     assert citations[0].start_seconds == 63.0
 
 
-def test_conversation_memory_keeps_recent_exchange() -> None:
-    memory = ConversationMemoryService(max_messages=2)
+async def test_conversation_memory_keeps_recent_exchange() -> None:
+    memory = InMemoryConversationStore(max_messages=2)
     session_id = "session-1"
 
-    memory.append_exchange(session_id, "Question one", "Answer one")
-    memory.append_exchange(session_id, "Question two", "Answer two")
+    await memory.append_exchange(session_id, "Question one", "Answer one")
+    await memory.append_exchange(session_id, "Question two", "Answer two")
 
-    messages = memory.get_messages(session_id)
+    messages = await memory.get_messages(session_id)
     assert messages == [
         ChatMessage(role="user", content="Question two"),
         ChatMessage(role="assistant", content="Answer two"),

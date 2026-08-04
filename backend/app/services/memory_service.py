@@ -1,31 +1,15 @@
-from collections import defaultdict, deque
-from uuid import uuid4
+from functools import lru_cache
 
-from app.schemas.rag import ChatMessage
-
-
-class ConversationMemoryService:
-    def __init__(self, max_messages: int = 8) -> None:
-        self.max_messages = max_messages
-        self._messages: dict[str, deque[ChatMessage]] = defaultdict(
-            lambda: deque(maxlen=self.max_messages)
-        )
-
-    def create_session_id(self) -> str:
-        return str(uuid4())
-
-    def get_messages(self, session_id: str) -> list[ChatMessage]:
-        return list(self._messages[session_id])
-
-    def append_exchange(self, session_id: str, user_message: str, assistant_message: str) -> None:
-        self._messages[session_id].append(ChatMessage(role="user", content=user_message))
-        self._messages[session_id].append(
-            ChatMessage(role="assistant", content=assistant_message)
-        )
+from app.core.config import settings
+from app.services.conversation_store import ConversationStore
+from app.services.conversation_store.factory import create_conversation_store
 
 
-memory_service = ConversationMemoryService()
+@lru_cache
+def get_memory_service() -> ConversationStore:
+    """Built once per process.
 
-
-def get_memory_service() -> ConversationMemoryService:
-    return memory_service
+    Reached through FastAPI dependencies, which run per request; the postgres
+    backend holds a session factory that must not be rebuilt each time.
+    """
+    return create_conversation_store(settings)
