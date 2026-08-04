@@ -30,11 +30,13 @@ services:
     env_file:
       - .env
     environment:
-      CHROMA_COLLECTION_NAME: asktube_videos
+      VECTOR_COLLECTION_NAME: asktube_videos
+      # Vectors AND analytics both live in this database. DATABASE_URL takes
+      # priority over ANALYTICS_DATABASE_URL, so setting the latter here would
+      # be inert and would wrongly suggest analytics still uses SQLite locally.
       DATABASE_URL: postgresql+asyncpg://asktube:asktube@postgres:5432/asktube
       # Data directories
       AUDIO_CACHE_DIR: /app/data/audio_cache
-      ANALYTICS_DATABASE_URL: sqlite+aiosqlite:///./data/analytics.db
       ANALYTICS_ENABLED: "true"
       PROMETHEUS_ENABLED: "true"
       # CORS — allowed frontend origins. Override in .env for production
