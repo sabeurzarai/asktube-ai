@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import logging
 import time
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -15,6 +16,9 @@ from app.services.conversation_store import ConversationStore
 from app.services.llm_provider import create_chat_model, require_chat_credentials
 from app.services.memory_service import get_memory_service
 from app.services.vectorstore_service import VectorStoreService, get_vectorstore_service
+
+
+logger = logging.getLogger(__name__)
 
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
@@ -51,6 +55,43 @@ class RAGService:
         self.vectorstore = vectorstore
         self.memory = memory
 
+    async def _get_history(self, session_id: str) -> list[ChatMessage]:
+        """Read conversation history, degrading to an empty history on outage.
+
+        Memory is an enhancement, not the product: an answer without prior
+        follow-up context is a mild quality regression, whereas refusing to
+        answer because the store is unreachable would be an outage. Only
+        connection-level failures are swallowed here; a bug in the store must
+        still surface as a 500.
+        """
+        try:
+            return await self.memory.get_messages(session_id)
+        except (OSError, ConnectionError):
+            logger.warning(
+                "Conversation store unreachable reading history for session %s; "
+                "continuing with empty memory.",
+                session_id,
+                exc_info=True,
+            )
+            return []
+
+    async def _append_exchange(self, session_id: str, user_message: str, assistant_message: str) -> None:
+        """Persist the exchange, tolerating a store outage.
+
+        By the time this runs, retrieval and generation have already
+        succeeded; discarding that work because the history write failed
+        would waste it for nothing.
+        """
+        try:
+            await self.memory.append_exchange(session_id, user_message, assistant_message)
+        except (OSError, ConnectionError):
+            logger.warning(
+                "Conversation store unreachable appending exchange for session %s; "
+                "answer will be returned without being remembered.",
+                session_id,
+                exc_info=True,
+            )
+
     @traceable(name="rag_answer", run_type="chain", project_name=settings.langsmith_project)
     async def answer(
         self,
@@ -71,8 +112,8 @@ class RAGService:
 
         if not retrieved_context:
             answer = "I cannot answer that from the transcript because no relevant context was found."
-            await self.memory.append_exchange(active_session_id, message, answer)
-            messages = await self.memory.get_messages(active_session_id)
+            await self._append_exchange(active_session_id, message, answer)
+            messages = await self._get_history(active_session_id)
             await self._record_rag_metrics(
                 message=message,
                 session_id=active_session_id,
@@ -92,7 +133,7 @@ class RAGService:
                 memory=messages,
             )
 
-        history = await self.memory.get_messages(active_session_id)
+        history = await self._get_history(active_session_id)
         chain = RAG_PROMPT | self.create_chat_model(streaming=False)
         generation_start = time.perf_counter()
         response = await chain.ainvoke(
@@ -115,8 +156,8 @@ class RAGService:
         generation_ms = (time.perf_counter() - generation_start) * 1000
         answer = str(response.content).strip()
         citations = build_citations(retrieved_context)
-        await self.memory.append_exchange(active_session_id, message, answer)
-        messages = await self.memory.get_messages(active_session_id)
+        await self._append_exchange(active_session_id, message, answer)
+        messages = await self._get_history(active_session_id)
         await self._record_rag_metrics(
             message=message,
             session_id=active_session_id,
@@ -155,7 +196,7 @@ class RAGService:
         )
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
-        history = await self.memory.get_messages(active_session_id)
+        history = await self._get_history(active_session_id)
         yield RAGStreamEvent(
             type="context",
             session_id=active_session_id,
@@ -166,8 +207,8 @@ class RAGService:
 
         if not retrieved_context:
             answer = "I cannot answer that from the transcript because no relevant context was found."
-            await self.memory.append_exchange(active_session_id, message, answer)
-            messages = await self.memory.get_messages(active_session_id)
+            await self._append_exchange(active_session_id, message, answer)
+            messages = await self._get_history(active_session_id)
             await self._record_rag_metrics(
                 message=message,
                 session_id=active_session_id,
@@ -220,8 +261,8 @@ class RAGService:
         answer = "".join(answer_parts).strip()
         generation_ms = (time.perf_counter() - generation_start) * 1000
         citations = build_citations(retrieved_context)
-        await self.memory.append_exchange(active_session_id, message, answer)
-        messages = await self.memory.get_messages(active_session_id)
+        await self._append_exchange(active_session_id, message, answer)
+        messages = await self._get_history(active_session_id)
         await self._record_rag_metrics(
             message=message,
             session_id=active_session_id,
