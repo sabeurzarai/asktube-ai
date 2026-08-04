@@ -106,11 +106,6 @@ class VectorStoreService:
         return results
 
 
-# Transitional: consumers still import this name. Task 3 replaces their annotations
-# and deletes this line. Keeping it for one task means the tree never sits broken.
-AnyVectorStoreService = VectorStoreService
-
-
 @lru_cache
 def get_vectorstore_service() -> VectorStoreService:
     """Built once per process.

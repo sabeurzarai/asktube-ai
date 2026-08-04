@@ -13,7 +13,7 @@ from app.schemas.rag import ChatMessage, RAGChatResponse, RAGStreamEvent, Timest
 from app.schemas.vectorstore import VectorSearchResult
 from app.services.llm_provider import create_chat_model, require_chat_credentials
 from app.services.memory_service import ConversationMemoryService, memory_service
-from app.services.vectorstore_service import AnyVectorStoreService, get_vectorstore_service
+from app.services.vectorstore_service import VectorStoreService, get_vectorstore_service
 
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
@@ -43,7 +43,7 @@ class RAGService:
     def __init__(
         self,
         config: Settings,
-        vectorstore: AnyVectorStoreService,
+        vectorstore: VectorStoreService,
         memory: ConversationMemoryService,
     ) -> None:
         self.config = config
