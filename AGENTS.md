@@ -78,8 +78,9 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **157 passed, 1 skipped** with
-  local-embedding extras installed, or **153 passed, 5 skipped** without them
+- Backend: `cd backend && python -m pytest` → expect **191 passed, 1 skipped** with
+  local-embedding extras installed, or **187 passed, 5 skipped** without them
+  (the lone skip is the Alembic migration test, which needs `TEST_DATABASE_URL`)
   (the extra 4 skips = local-embedding tests without extras; the remaining 1 skip
   present either way is the Alembic migration test, which skips unless
   `TEST_DATABASE_URL` is set). Set `OPENAI_API_KEY` to any dummy value first or
