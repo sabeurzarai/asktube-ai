@@ -7,7 +7,10 @@ from app.services.vectorstore_service import VectorStoreService
 
 class StoreVideoVectorsInput(BaseModel):
     chunks: list[dict] = Field(
-        description="List of TranscriptChunk objects serialized as dicts to upsert into ChromaDB"
+        description=(
+            "List of TranscriptChunk objects serialized as dicts to store in the vector "
+            "store, replacing any previously stored chunks for that video"
+        )
     )
 
 
@@ -21,8 +24,9 @@ def make_store_video_vectors_tool(service: VectorStoreService) -> StructuredTool
         coroutine=_run,
         name="store_video_vectors",
         description=(
-            "Upsert transcript chunks into the ChromaDB vector store. "
-            "Generates OpenAI embeddings automatically for any chunk that lacks them."
+            "Store transcript chunks in the vector store, replacing any previously stored "
+            "chunks for that video. Generates OpenAI embeddings automatically for any chunk "
+            "that lacks them."
         ),
         args_schema=StoreVideoVectorsInput,
     )

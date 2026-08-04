@@ -7,7 +7,7 @@ from app.services.vectorstore_service import VectorStoreService
 
 
 class IngestVideoInput(BaseModel):
-    video_id: str = Field(description="YouTube video ID to extract, chunk, and store in ChromaDB")
+    video_id: str = Field(description="YouTube video ID to extract, chunk, and store in the vector store")
     language: str = Field(default="en", description="BCP-47 language code for transcript extraction")
 
 
@@ -38,7 +38,7 @@ def make_ingest_video_tool(
         name="ingest_video",
         description=(
             "Extract the transcript from a YouTube video, split it into semantic chunks, "
-            "generate embeddings, and store everything in ChromaDB. "
+            "generate embeddings, and store everything in the vector store. "
             "Always call this before answer_question when the video has not been ingested yet."
         ),
         args_schema=IngestVideoInput,
