@@ -66,6 +66,14 @@ class Settings(BaseSettings):
             "from DATABASE_URL: set means pgvector, absent means memory."
         ),
     )
+    conversation_backend: str | None = Field(
+        default=None,
+        alias="CONVERSATION_BACKEND",
+        description=(
+            "Explicit conversation store backend: 'postgres' or 'memory'. Unset "
+            "derives from DATABASE_URL: set means postgres, absent means memory."
+        ),
+    )
     audio_cache_dir: str = Field(default="data/audio_cache", alias="AUDIO_CACHE_DIR")
     ffmpeg_location: str | None = Field(default=None, alias="FFMPEG_LOCATION")
     webshare_proxy_username: str | None = Field(
