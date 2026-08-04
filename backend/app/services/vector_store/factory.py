@@ -7,25 +7,25 @@ from app.services.vector_store.postgres import PgVectorStore
 
 
 def resolve_vector_backend(config: Settings) -> str:
-    """The single place the 'chroma' default lives.
+    """Explicit VECTOR_BACKEND wins; otherwise derive from DATABASE_URL.
 
-    Both the service factory (which decides between ChromaVectorStoreService and
-    VectorStoreService) and this store factory (which only ever builds a
-    VectorStore) resolve the backend name through this function, so they cannot
-    disagree about what an unset VECTOR_BACKEND means.
+    Deriving rather than defaulting to "memory" is deliberate: forgetting the
+    variable in a deployment that has a database would otherwise start an
+    in-memory store that resets on every restart and looks like it is working.
+    A bare checkout has no DATABASE_URL and still needs no infrastructure.
     """
-    return (config.vector_backend or "chroma").lower()
+    if config.vector_backend:
+        return config.vector_backend.lower()
+    return "pgvector" if config.database_url else "memory"
 
 
 def create_vector_store(config: Settings) -> VectorStore:
     """Select the vector store backend.
 
-    Only 'memory' and 'pgvector' are built here — both are real VectorStore
-    implementations. 'chroma' is not: ChromaVectorStoreService does not satisfy
-    the VectorStore protocol (it has upsert_chunks/similarity_search(query: str),
-    not replace_video_chunks/similarity_search(query_embedding: list[float])), so
-    selecting it is a service-layer decision made in
-    app.services.vectorstore_service.get_vectorstore_service(), not here.
+    Only 'memory' and 'pgvector' exist. 'chroma' is rejected by name rather than
+    falling into the generic unknown-backend error, so an operator with the value
+    still set in an old environment is told the backend was removed instead of
+    merely that it is unrecognised.
     """
     backend = resolve_vector_backend(config)
 
@@ -49,11 +49,11 @@ def create_vector_store(config: Settings) -> VectorStore:
 
     if backend == "chroma":
         raise ValueError(
-            "VECTOR_BACKEND=chroma is not a VectorStore: ChromaVectorStoreService "
-            "is selected in app.services.vectorstore_service.get_vectorstore_service(), "
-            "not by create_vector_store()."
+            "VECTOR_BACKEND=chroma is no longer supported: ChromaDB was removed in "
+            "favour of Postgres + pgvector. Unset VECTOR_BACKEND to derive the "
+            "backend from DATABASE_URL."
         )
 
     raise ValueError(
-        f"Unknown VECTOR_BACKEND {backend!r}. Expected 'chroma', 'pgvector' or 'memory'."
+        f"Unknown VECTOR_BACKEND {backend!r}. Expected 'pgvector' or 'memory'."
     )

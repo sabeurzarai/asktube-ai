@@ -4,7 +4,7 @@ This is the single place embeddings are built. It supports the default
 OpenAI provider and an optional free "local" provider that runs a
 HuggingFace sentence-transformers model on the CPU.
 
-Switching providers changes vector dimensions, so any ChromaDB collection
+Switching providers changes vector dimensions, so the `transcript_chunks` table
 populated under one provider MUST be wiped before querying under the other
 — otherwise retrieval silently returns garbage.
 """

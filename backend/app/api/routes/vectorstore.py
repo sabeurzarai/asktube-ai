@@ -20,7 +20,7 @@ from app.services.transcript_service import (
     get_transcript_service,
 )
 from app.services.vectorstore_service import (
-    AnyVectorStoreService,
+    VectorStoreService,
     get_vectorstore_service,
 )
 
@@ -60,7 +60,7 @@ def _vectorstore_value_error(exc: ValueError) -> HTTPException:
 async def ingest_transcript_chunks(
     request: IngestTranscriptRequest,
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: VectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     chunking_start = time.perf_counter()
@@ -126,7 +126,7 @@ async def ingest_video_transcript(
     overlap_segments: int = Query(default=1, ge=0, le=5),
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: VectorStoreService = Depends(get_vectorstore_service),
 ) -> IngestVideoResponse:
     started_at = time.perf_counter()
     transcript_start = time.perf_counter()
@@ -196,7 +196,7 @@ async def ingest_video_stream(
     ],
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),
-    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: VectorStoreService = Depends(get_vectorstore_service),
 ) -> None:
     """WebSocket endpoint that streams real ingestion progress events.
 
@@ -287,7 +287,7 @@ async def search_vectorstore(
     q: Annotated[str, Query(min_length=2, max_length=500)],
     video_id: str | None = Query(default=None, min_length=6, max_length=32),
     limit: int = Query(default=5, ge=1, le=20),
-    vectorstore_service: AnyVectorStoreService = Depends(get_vectorstore_service),
+    vectorstore_service: VectorStoreService = Depends(get_vectorstore_service),
 ) -> VectorSearchResponse:
     started_at = time.perf_counter()
     try:

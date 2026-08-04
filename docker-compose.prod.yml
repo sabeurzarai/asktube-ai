@@ -20,5 +20,5 @@ services:
       - backend_data:/app/data
     restart: unless-stopped
 
-  chromadb:
+  postgres:
     restart: unless-stopped

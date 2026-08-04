@@ -3,11 +3,17 @@
 Live demo: **https://asktube-ai.duckdns.org** (fallback: https://asktube-ai.vercel.app)
 Backend: https://asktube-ai-q2gi.onrender.com
 
-This runbook assumes the free-tier deployment (Vercel + Render). Two free-tier
-behaviors drive every step below:
+This runbook assumes the free-tier deployment (Vercel + Render). One free-tier
+behavior drives the step below:
 - **Render sleeps after 15 idle min** → 30–60 s cold start on first request.
-- **Render has no persistent disk** → ChromaDB + SQLite analytics reset on every
-  restart, so the demo video must be re-ingested after any restart.
+
+Transcript vectors now live in Postgres (pgvector), not in an ephemeral
+ChromaDB store, so they **survive a Render restart** — this was verified live:
+a video was ingested, the service was restarted, and the same query returned
+the same chunks with identical ids and distances, with no re-ingest needed.
+SQLite analytics still resets on restart, but that's cosmetic (dashboard
+history), not a demo blocker. What still needs warming before presenting is
+the Render service itself, because the free tier sleeps after 15 idle minutes.
 
 ---
 
@@ -47,15 +53,18 @@ Free-tier cold start is 30–60 s. Warm it so the audience never sees it.
 - Or curl it (note: on this machine, schannel/Avast may break local curl — use
   the browser or an external probe like https://check-host.net/check-http ).
 
-### 2. 🎬 Re-ingest the demo video
+### 2. 🎬 Confirm the demo video is ingested
 
-After a Render restart, ChromaDB is empty — search works but **chat has nothing
-to retrieve from** until you ingest. Do this during warm-up, not on stage.
+Transcript vectors persist in Postgres across Render restarts, so a video
+ingested in a previous session is still there — you do **not** need to
+re-ingest it just because the service restarted. Still worth a quick check
+during warm-up, not on stage, in case this is a brand-new video:
 
 1. Open the demo URL, search for your chosen video (see "Picking videos" below).
-2. Click the result to ingest → wait for the "indexed/ready" state in the UI.
-3. Ask one throwaway question to confirm retrieval + citation render correctly.
-4. Leave that video ingested so the live demo starts from a populated workspace.
+2. Ask one throwaway question about it in Chat. If you get a grounded answer
+   with a citation, it's already ingested — skip the rest of this step.
+3. If not, click the result to ingest → wait for the "indexed/ready" state,
+   then re-ask the question to confirm retrieval + citation render correctly.
 
 ### 3. 📋 Sanity check the four pillars
 
@@ -106,7 +115,7 @@ region-blocked or its captions get pulled.
 |---|---|---|
 | First request hangs 30–60 s | Render cold start | Wait; it self-resolves. Warm `/health` next time. |
 | Ingest → 502 "YouTube refused" | Proxy not set / proxy down | Set `WEBSHARE_PROXY_URL` on Render + redeploy (step 0). |
-| Chat returns generic answer, no citation | ChromaDB empty (post-restart) | Re-ingest the demo video (step 2). |
+| Chat returns generic answer, no citation | Video was never ingested (vectors persist across restarts, but a brand-new video still needs its first ingest) | Ingest the demo video (step 2). |
 | Search returns nothing / "Search paused" | `YOUTUBE_API_KEY` quota or `NEXT_PUBLIC_API_URL` wrong | Check Render env + Vercel `NEXT_PUBLIC_API_URL` matches the onrender URL. |
 | duckdns URL won't load on your laptop | Your router cached the old EC2 IP (LEARNINGS.md) | Use https://asktube-ai.vercel.app instead — it's the same app. Or toggle browser DoH. |
 | Everything 500s | A push to `main` broke the build | Check Render deploy logs + Vercel build; roll back the commit. |
@@ -122,4 +131,6 @@ region-blocked or its captions get pulled.
 
 - No teardown needed — leaving it deployed costs $0.
 - If you want a clean analytics dashboard for next time, just restart the Render
-  service (it wipes SQLite). Don't forget to re-ingest afterward.
+  service (it wipes SQLite). Transcript vectors live in Postgres and are
+  unaffected by the restart, so the demo video stays ingested — no need to
+  re-ingest afterward.

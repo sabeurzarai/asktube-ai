@@ -4,70 +4,9 @@ from app.core.config import Settings
 from app.schemas.chunks import TranscriptChunk
 from app.services.vector_store import InMemoryVectorStore
 from app.services.vectorstore_service import (
-    ChromaVectorStoreService,
     VectorStoreService,
     get_vectorstore_service,
-    parse_chroma_query_result,
-    to_chroma_metadata,
 )
-
-
-def make_chunk() -> TranscriptChunk:
-    return TranscriptChunk(
-        chunk_id="video123:0:abc",
-        index=0,
-        video_id="video123",
-        text="A timestamped transcript chunk.",
-        start_seconds=12.5,
-        end_seconds=22.75,
-        segment_indices=[3, 4, 5],
-        token_estimate=5,
-        metadata={
-            "video_id": "video123",
-            "source": "youtube_transcript_api",
-            "language": "en",
-            "chunk_index": 0,
-            "start_seconds": 12.5,
-            "end_seconds": 22.75,
-            "segment_indices": [3, 4, 5],
-        },
-    )
-
-
-def test_to_chroma_metadata_preserves_timestamps() -> None:
-    metadata = to_chroma_metadata(make_chunk())
-
-    assert metadata["video_id"] == "video123"
-    assert metadata["start_seconds"] == 12.5
-    assert metadata["end_seconds"] == 22.75
-    assert metadata["segment_indices"] == "[3, 4, 5]"
-    assert metadata["source"] == "youtube_transcript_api"
-
-
-def test_parse_chroma_query_result() -> None:
-    results = parse_chroma_query_result(
-        {
-            "ids": [["video123:0:abc"]],
-            "documents": [["A timestamped transcript chunk."]],
-            "metadatas": [
-                [
-                    {
-                        "video_id": "video123",
-                        "start_seconds": 12.5,
-                        "end_seconds": 22.75,
-                        "segment_indices": "[3, 4, 5]",
-                        "source": "youtube_transcript_api",
-                    }
-                ]
-            ],
-            "distances": [[0.12]],
-        }
-    )
-
-    assert len(results) == 1
-    assert results[0].chunk_id == "video123:0:abc"
-    assert results[0].segment_indices == [3, 4, 5]
-    assert results[0].distance == 0.12
 
 
 def make_orchestrator_chunk(video_id: str, index: int, embedding=None) -> TranscriptChunk:
@@ -145,18 +84,21 @@ def test_vector_store_is_built_once_not_per_request():
     assert first is second
 
 
-def test_get_vectorstore_service_returns_chroma_when_backend_unset(monkeypatch):
-    # This is the defect this file's fix exists for: an unset VECTOR_BACKEND must
-    # resolve to a ChromaVectorStoreService, not a VectorStoreService wrapping a
-    # Chroma service it cannot drive (Chroma has upsert_chunks/similarity_search(
-    # query: str), not replace_video_chunks/similarity_search(query_embedding)).
+def test_get_vectorstore_service_returns_vectorstoreservice_when_backend_unset_and_no_database(monkeypatch):
+    # Task 2b-ii: when VECTOR_BACKEND is unset, it now derives from DATABASE_URL.
+    # Unset + no DATABASE_URL → memory backend → VectorStoreService (not Chroma).
+    # The chroma selection branch in get_vectorstore_service is now unreachable.
     import app.services.vectorstore_service as module
 
+    # Patch the settings object, not the environment: `settings` is an lru_cached
+    # singleton built at import, so delenv() would not affect it and the test would
+    # fail for anyone running the suite with DATABASE_URL exported.
     monkeypatch.setattr(module.settings, "vector_backend", None)
+    monkeypatch.setattr(module.settings, "database_url", None)
     get_vectorstore_service.cache_clear()
     try:
         service = get_vectorstore_service()
-        assert isinstance(service, ChromaVectorStoreService)
+        assert isinstance(service, VectorStoreService)
     finally:
         get_vectorstore_service.cache_clear()
 

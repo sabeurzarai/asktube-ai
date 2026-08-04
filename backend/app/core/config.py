@@ -33,8 +33,9 @@ class Settings(BaseSettings):
     # ── Embedding provider ─────────────────────────────────────────────────────
     # "openai" (default) or "local". Local mode runs a HuggingFace
     # sentence-transformers model on the CPU — fully free, no API calls, but
-    # changing providers changes vector dimensions: wipe the ChromaDB collection
-    # and re-ingest all videos before querying, or retrieval returns garbage.
+    # changing providers changes vector dimensions: the transcript_chunks column
+    # is a fixed-width vector(N), so switching needs a new migration plus a wipe
+    # and re-ingest of all videos, or retrieval returns garbage.
     embedding_provider: str = Field(default="openai", alias="EMBEDDING_PROVIDER")
     local_embedding_model: str = Field(
         default="sentence-transformers/all-MiniLM-L6-v2",
@@ -42,10 +43,9 @@ class Settings(BaseSettings):
     )
     chunk_max_chars: int = Field(default=1200, alias="CHUNK_MAX_CHARS")
     chunk_overlap_segments: int = Field(default=1, alias="CHUNK_OVERLAP_SEGMENTS")
-    chroma_host: str = Field(default="localhost", alias="CHROMA_HOST")
-    chroma_port: int = Field(default=8001, alias="CHROMA_PORT")
-    chroma_use_http: bool = Field(default=False, alias="CHROMA_USE_HTTP")
-    chroma_persist_dir: str = Field(default="./chroma_data", alias="CHROMA_PERSIST_DIR")
+    # Survives only as a compatibility alias: the ChromaDB backend is gone, but
+    # CHROMA_COLLECTION_NAME remains the fallback behind VECTOR_COLLECTION_NAME
+    # for deployments that still set it (see resolved_collection_name below).
     chroma_collection_name: str = Field(
         default="asktube_videos",
         alias="CHROMA_COLLECTION_NAME",
@@ -62,8 +62,8 @@ class Settings(BaseSettings):
         default=None,
         alias="VECTOR_BACKEND",
         description=(
-            "Explicit vector store backend: 'chroma', 'pgvector' or 'memory'. "
-            "Unset resolves via create_vector_store()."
+            "Explicit vector store backend: 'pgvector' or 'memory'. Unset derives "
+            "from DATABASE_URL: set means pgvector, absent means memory."
         ),
     )
     audio_cache_dir: str = Field(default="data/audio_cache", alias="AUDIO_CACHE_DIR")

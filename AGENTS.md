@@ -13,7 +13,7 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 |---|---|
 | Frontend (Next.js) | Vercel — https://asktube-ai.duckdns.org + https://asktube-ai.vercel.app |
 | Backend (FastAPI, Docker) | Render free tier — https://asktube-ai-q2gi.onrender.com |
-| Vector store | ChromaDB **embedded in the backend process** (`CHROMA_USE_HTTP=false`) |
+| Vector store | Postgres + pgvector, via `DATABASE_URL` (ChromaDB removed) |
 | DNS | DuckDNS A record → Vercel IP (duckdns is PSL-listed, so Vercel treats it as apex) |
 
 - **Push to `main` auto-deploys BOTH platforms.** A broken push takes down the live demo.
@@ -21,8 +21,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 - Vercel root dir = `frontend/`; `NEXT_PUBLIC_API_URL` is baked at build time —
   changing it requires a redeploy, not just saving the variable.
 - Render free tier: sleeps after 15 idle min (30–60 s cold start); **no persistent
-  disk** — ChromaDB + SQLite analytics reset on every restart. Warm `/health` and
-  re-ingest a demo video before presenting.
+  disk**, but transcript vectors now live in Postgres and survive a restart —
+  verified live (ingest → restart → same query returns identical chunks/ids/
+  distances, no re-ingest needed). SQLite analytics still resets on restart.
+  Warm `/health` before presenting; re-ingesting is no longer required.
 - YouTube blocks transcript fetches from datacenter IPs: `WEBSHARE_PROXY_URL`
   (residential proxy) must be set on Render or ingestion 502s.
 
@@ -35,21 +37,28 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 - Embeddings switch: `EMBEDDING_PROVIDER=openai|local` — factory in
   `backend/app/services/embedding_provider.py`. Local mode needs opt-in extras
   (`pip install -r backend/requirements-local-embeddings.txt`, torch is
-  platform-specific — see that file) and a wiped + re-ingested ChromaDB.
+  platform-specific — see that file) and a wiped + re-ingested vector store.
 - `CORS_ORIGINS` accepts JSON array, comma-separated, or single origin (the field
   uses `NoDecode` — do not remove it, plain values crash startup otherwise).
-- Vector store switch: `VECTOR_BACKEND=chroma|pgvector|memory` — factory in
-  `backend/app/services/vector_store/factory.py`. Unset defaults to `chroma` while
-  ChromaDB still exists; Phase 2b-ii changes that to derive from `DATABASE_URL`.
-  `VectorStoreService` in `vectorstore_service.py` owns embedding generation and
-  delegates persistence to the selected store. Note `ChromaVectorStoreService` is NOT
-  a `VectorStore` (it has `upsert_chunks` / `similarity_search(query: str)`), so
-  `create_vector_store()` raises for `chroma` and the choice is made one level up in
-  `get_vectorstore_service()`, which returns the Chroma service unchanged.
-  **On the pgvector and memory backends only**, re-ingesting a video REPLACES its
-  chunks rather than upserting, so a chunking-parameter change no longer leaves stale
-  chunks behind. The chroma path is unchanged code and still upserts — so this fix
-  takes effect when you set `VECTOR_BACKEND=pgvector`, not when this merges.
+- Vector store: **ChromaDB is gone** — no `chromadb` dependency, no
+  `ChromaVectorStoreService`, no `chroma_data` directory. `VECTOR_BACKEND` accepts
+  `pgvector` or `memory` only; factory in `backend/app/services/vector_store/factory.py`.
+  `chroma` now raises a `ValueError` naming it as removed rather than falling into
+  the generic unknown-backend error. Unset `VECTOR_BACKEND` derives the backend from
+  `DATABASE_URL`: set → `pgvector`, absent → `memory` — this is why forgetting the
+  variable in a deployment that has a database no longer silently produces an
+  ephemeral store. `VectorStoreService` in `vectorstore_service.py` owns embedding
+  generation and delegates persistence to the selected store.
+  `VECTOR_COLLECTION_NAME` (default `asktube_videos`) is the logical name reported
+  as `collection_name` in API responses. `CHROMA_COLLECTION_NAME` survives only as
+  a compatibility fallback for already-deployed environments that still set it —
+  it is not the setting to use going forward.
+  **Re-ingesting a video always REPLACES its chunks rather than upserting** — this
+  is now unconditional, since the Chroma path that still upserted no longer exists.
+- Local development: `docker compose up` starts a `postgres` service on
+  `pgvector/pgvector:pg16` (no more chromadb container), and the backend gets
+  `DATABASE_URL` pointing at it. Migrations run once, manually:
+  `docker compose exec backend python -m alembic upgrade head`.
 - Database: `DATABASE_URL` is the single async SQLAlchemy URL for all persistent
   stores and takes priority over `ANALYTICS_DATABASE_URL`. Unset, everything runs
   on SQLite as before. Postgres schema is owned by Alembic — run migrations
@@ -69,8 +78,9 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **157 passed, 1 skipped** with
-  local-embedding extras installed, or **153 passed, 5 skipped** without them
+- Backend: `cd backend && python -m pytest` → expect **191 passed, 1 skipped** with
+  local-embedding extras installed, or **187 passed, 5 skipped** without them
+  (the lone skip is the Alembic migration test, which needs `TEST_DATABASE_URL`)
   (the extra 4 skips = local-embedding tests without extras; the remaining 1 skip
   present either way is the Alembic migration test, which skips unless
   `TEST_DATABASE_URL` is set). Set `OPENAI_API_KEY` to any dummy value first or

@@ -42,8 +42,8 @@ def cosine_distance(a: list[float], b: list[float]) -> float:
     Matches pgvector's `<=>` operator and Chroma's `hnsw:space: cosine`, so the
     value carries the same meaning across every backend.
 
-    Deliberately not numpy — numpy is not a direct dependency and arrives only via
-    chromadb, which is being removed.
+    Deliberately not numpy — numpy is not a direct dependency and previously arrived
+    only via chromadb, which has since been removed.
     """
     if len(a) != len(b):
         raise ValueError(f"embedding dimension mismatch: {len(a)} != {len(b)}")
