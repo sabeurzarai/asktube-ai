@@ -1,15 +1,62 @@
+import os
+
 import pytest
 
-from app.services.conversation_store import InMemoryConversationStore
+from app.core.config import settings
+from app.services.conversation_store import (
+    InMemoryConversationStore,
+    PostgresConversationStore,
+)
+from tests.conftest import reject_non_scratch_database
+
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+
+BACKENDS = ["memory"]
+if TEST_DATABASE_URL:
+    BACKENDS.append("postgres")
+
+CONTRACT_MAX_MESSAGES = 4
 
 
-# Task 5 appends the postgres backend here. Test bodies stay unchanged.
-@pytest.fixture(params=["memory"])
+@pytest.fixture(params=BACKENDS)
 async def store(request):
+    """Yield each backend in turn.
+
+    WARNING: the postgres branch deletes every row in conversation_messages.
+    reject_non_scratch_database refuses unless the target is demonstrably disposable.
+    """
     if request.param == "memory":
-        yield InMemoryConversationStore(max_messages=4)
+        yield InMemoryConversationStore(max_messages=CONTRACT_MAX_MESSAGES)
         return
-    raise AssertionError(f"unknown backend {request.param}")
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+    engine = create_async_engine(TEST_DATABASE_URL)
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with factory() as session:
+        existing = (
+            await session.execute(text("select count(*) from conversation_messages"))
+        ).scalar_one()
+    try:
+        reject_non_scratch_database(
+            TEST_DATABASE_URL,
+            settings.database_url,
+            existing,
+            table_name="conversation_messages",
+        )
+    except Exception:
+        await engine.dispose()
+        raise
+
+    try:
+        yield PostgresConversationStore(factory, max_messages=CONTRACT_MAX_MESSAGES)
+    finally:
+        async with factory() as session:
+            async with session.begin():
+                await session.execute(text("delete from conversation_messages"))
+        await engine.dispose()
 
 
 async def test_appended_exchange_is_readable(store):
