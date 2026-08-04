@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 from typing import Any
 
@@ -9,14 +10,15 @@ from langsmith import traceable
 from app.core.config import Settings, settings
 from app.analytics.service import get_analytics_service
 from app.schemas.agent import AgentChatResponse
-from app.schemas.rag import TimestampCitation
+from app.schemas.rag import ChatMessage, TimestampCitation
 from app.services.chunking_service import get_chunking_service
+from app.services.conversation_store import ConversationStore
 from app.services.llm_provider import (
     create_chat_model,
     require_chat_credentials,
     supports_tool_calling,
 )
-from app.services.memory_service import ConversationMemoryService, memory_service
+from app.services.memory_service import get_memory_service
 from app.services.rag_service import RAGService, get_rag_service
 from app.services.transcript_service import get_transcript_service
 from app.services.vectorstore_service import get_vectorstore_service
@@ -51,13 +53,15 @@ WORKFLOW:
 
 _MAX_ITERATIONS = 8
 
+logger = logging.getLogger(__name__)
+
 
 class AgentService:
     def __init__(
         self,
         config: Settings,
         tools: list[StructuredTool],
-        memory: ConversationMemoryService,
+        memory: ConversationStore,
         rag_service: RAGService | None = None,
     ) -> None:
         self.config = config
@@ -68,6 +72,43 @@ class AgentService:
         # (e.g. NVIDIA_TOOL_CALLING=false): the agent then delegates to the
         # plain transcript-grounded RAG path instead of bind_tools.
         self.rag_service = rag_service
+
+    async def _get_history(self, session_id: str) -> list[ChatMessage]:
+        """Read conversation history, degrading to an empty history on outage.
+
+        Memory is an enhancement, not the product: an answer without prior
+        follow-up context is a mild quality regression, whereas refusing to
+        answer because the store is unreachable would be an outage. Only
+        connection-level failures are swallowed here; a bug in the store must
+        still surface as a 500.
+        """
+        try:
+            return await self.memory.get_messages(session_id)
+        except (OSError, ConnectionError):
+            logger.warning(
+                "Conversation store unreachable reading history for session %s; "
+                "continuing with empty memory.",
+                session_id,
+                exc_info=True,
+            )
+            return []
+
+    async def _append_exchange(self, session_id: str, user_message: str, assistant_message: str) -> None:
+        """Persist the exchange, tolerating a store outage.
+
+        By the time this runs, the agent loop (including any tool calls) has
+        already succeeded; discarding that work because the history write
+        failed would waste it for nothing.
+        """
+        try:
+            await self.memory.append_exchange(session_id, user_message, assistant_message)
+        except (OSError, ConnectionError):
+            logger.warning(
+                "Conversation store unreachable appending exchange for session %s; "
+                "answer will be returned without being remembered.",
+                session_id,
+                exc_info=True,
+            )
 
     @traceable(name="agent_chat", run_type="chain", project_name=settings.langsmith_project)
     async def chat(
@@ -95,7 +136,8 @@ class AgentService:
         model = create_chat_model(self.config, temperature=0.1).bind_tools(self.tools)
 
         messages: list = [SystemMessage(content=_build_system_prompt(video_id))]
-        for msg in self.memory.get_messages(active_session_id):
+        history = await self._get_history(active_session_id)
+        for msg in history:
             messages.append(
                 HumanMessage(content=msg.content)
                 if msg.role == "user"
@@ -175,7 +217,7 @@ class AgentService:
         # answer_question (via RAGService) already appended the exchange to memory;
         # only append here when the agent answered without that tool.
         if not answer_question_called:
-            self.memory.append_exchange(active_session_id, message, answer)
+            await self._append_exchange(active_session_id, message, answer)
 
         get_analytics_service().safe_track_background(
             get_analytics_service().track_event_safe(
@@ -320,4 +362,4 @@ def get_agent_service() -> AgentService:
         make_retrieve_context_tool(vectorstore),
         make_answer_question_tool(rag_service),
     ]
-    return AgentService(config=settings, tools=tools, memory=memory_service, rag_service=rag_service)
+    return AgentService(config=settings, tools=tools, memory=get_memory_service(), rag_service=rag_service)
