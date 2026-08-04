@@ -205,6 +205,33 @@ class Settings(BaseSettings):
             if location.strip()
         ]
 
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def reject_non_postgres_database_url(cls, value: str | None) -> str | None:
+        """Fail early and by name on a URL that is not a Postgres connection string.
+
+        Without this, pasting the Supabase PROJECT url here surfaces much later as
+        `NoSuchModuleError: Can't load plugin: sqlalchemy.dialects:https` from deep
+        inside SQLAlchemy - which names neither the setting nor the mistake. The
+        project url is shown prominently in the dashboard, so it is the natural
+        thing to copy; it is the REST endpoint, not the database.
+        """
+        if value is None or value.startswith("postgresql"):
+            return value
+
+        hint = ""
+        if value.startswith("http"):
+            hint = (
+                " That looks like a Supabase project url (the REST endpoint), not a "
+                "database connection string. Copy the port-5432 entry from Supabase "
+                "-> Connect and change the scheme to postgresql+asyncpg://."
+            )
+
+        raise ValueError(
+            f"DATABASE_URL must be a PostgreSQL connection string starting with "
+            f"'postgresql+asyncpg://', got {value[:40]!r}.{hint}"
+        )
+
     @property
     def resolved_analytics_url(self) -> str:
         """DATABASE_URL wins; ANALYTICS_DATABASE_URL is the backwards-compatible fallback."""

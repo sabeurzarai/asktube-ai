@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings
 
@@ -93,3 +94,34 @@ def test_vector_backend_defaults_to_none(monkeypatch):
     monkeypatch.delenv("VECTOR_BACKEND", raising=False)
     settings = Settings(_env_file=None)
     assert settings.vector_backend is None
+
+
+# A malformed DATABASE_URL previously surfaced as
+# "Can't load plugin: sqlalchemy.dialects:https" from deep inside SQLAlchemy.
+# That is the Supabase PROJECT url (the REST endpoint) pasted where the database
+# connection string belongs - an easy mistake, since the dashboard shows it
+# prominently. It cost two debugging rounds, so it fails early and by name.
+
+def test_database_url_rejects_a_supabase_project_url(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "https://yskjultqsrbikvmyvwnu.supabase.co")
+    with pytest.raises(ValidationError, match="postgresql"):
+        Settings(_env_file=None)
+
+
+def test_database_url_rejection_names_the_likely_mistake(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "https://project.supabase.co")
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None)
+    message = str(exc.value)
+    assert "project url" in message.lower()
+    assert "5432" in message
+
+
+def test_database_url_accepts_an_asyncpg_connection_string(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@host:5432/db")
+    assert Settings(_env_file=None).database_url.startswith("postgresql+asyncpg://")
+
+
+def test_database_url_unset_stays_none(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert Settings(_env_file=None).database_url is None
