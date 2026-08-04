@@ -14,6 +14,7 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 | Frontend (Next.js) | Vercel — https://asktube-ai.duckdns.org + https://asktube-ai.vercel.app |
 | Backend (FastAPI, Docker) | Render free tier — https://asktube-ai-q2gi.onrender.com |
 | Vector store | Postgres + pgvector, via `DATABASE_URL` (ChromaDB removed) |
+| Conversation history | Postgres (`conversation_messages` table), via `DATABASE_URL` |
 | DNS | DuckDNS A record → Vercel IP (duckdns is PSL-listed, so Vercel treats it as apex) |
 
 - **Push to `main` auto-deploys BOTH platforms.** A broken push takes down the live demo.
@@ -21,10 +22,11 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 - Vercel root dir = `frontend/`; `NEXT_PUBLIC_API_URL` is baked at build time —
   changing it requires a redeploy, not just saving the variable.
 - Render free tier: sleeps after 15 idle min (30–60 s cold start); **no persistent
-  disk**, but transcript vectors now live in Postgres and survive a restart —
-  verified live (ingest → restart → same query returns identical chunks/ids/
-  distances, no re-ingest needed). SQLite analytics still resets on restart.
-  Warm `/health` before presenting; re-ingesting is no longer required.
+  disk**, but transcript vectors and conversation history both now live in Postgres
+  and survive a restart — verified live for vectors (ingest → restart → same query
+  returns identical chunks/ids/distances, no re-ingest needed). SQLite analytics
+  still resets on restart. Warm `/health` before presenting; re-ingesting is no
+  longer required.
 - YouTube blocks transcript fetches from datacenter IPs: `WEBSHARE_PROXY_URL`
   (residential proxy) must be set on Render or ingestion 502s.
 
@@ -75,14 +77,28 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   a second prepared-statement layer (its own cache size, defaulting to 100, plus
   a numeric name generator) that still needs disabling, or pooled connections
   collide with `DuplicatePreparedStatementError`.
+- Conversation memory: `CONVERSATION_BACKEND` accepts `postgres` or `memory`;
+  factory in `backend/app/services/conversation_store/factory.py`. Unset derives
+  the backend from `DATABASE_URL`: set → `postgres`, absent → `memory` — same
+  pattern as `VECTOR_BACKEND`. History is trimmed to the newest 8 messages per
+  session on write, inside the insert's transaction — this mirrors the bounded
+  deque the in-process store always used, so nothing is lost that would not
+  already have been discarded before. **Memory degrades, it does not fail**: if
+  the store is unreachable, `RAGService` logs a warning and answers with empty
+  history instead of erroring — deliberately the opposite of retrieval, which
+  fails loudly with a 502, since retrieval is the product and memory is only an
+  enhancement. The in-memory implementation stays permanently as the dev/CI
+  backend — unlike ChromaDB it is not being removed — so
+  `CONVERSATION_BACKEND=memory` remains a supported rollback. Migration `0003`
+  creates `conversation_messages`; run migrations with `cd backend && python -m
+  alembic upgrade head`.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **191 passed, 1 skipped** with
-  local-embedding extras installed, or **187 passed, 5 skipped** without them
-  (the lone skip is the Alembic migration test, which needs `TEST_DATABASE_URL`)
-  (the extra 4 skips = local-embedding tests without extras; the remaining 1 skip
-  present either way is the Alembic migration test, which skips unless
+- Backend: `cd backend && python -m pytest` → expect **197 passed, 1 skipped** with
+  local-embedding extras installed, or **193 passed, 5 skipped** without them
+  (the extra 4 skips = local-embedding tests without extras; the 1 skip present
+  either way is the Alembic migration test, which skips unless
   `TEST_DATABASE_URL` is set). Set `OPENAI_API_KEY` to any dummy value first or
   9 speech tests fail with 503.
 - Frontend: `cd frontend && npx tsc --noEmit && npm test` → expect **79 passed**.
