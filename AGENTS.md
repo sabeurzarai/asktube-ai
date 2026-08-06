@@ -178,6 +178,25 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   ambiguous substring does not fail loudly; it makes its case pass for the wrong
   reason. The transcript is committed at
   `tests/fixtures/transcript_fWjsdhR3z3c.json` so the check needs no network.
+- `top_k` stays at **5** — measured with `scripts/sweep_top_k.py`, which
+  concluded that the current value is right. Two traps make the naive
+  measurement useless, and both are worth knowing before anyone re-opens this:
+  **hit rate is monotone non-decreasing in `top_k`** (a larger k can never lose a
+  hit, so k = chunk count scores 100% trivially — "higher was better" is
+  arithmetic, not a finding); and **`off_topic` cases are invariant to `top_k`**,
+  because they score the best/minimum distance, which does not change whether you
+  return 1 result or 10. The sweep therefore excludes them and reads the rank
+  distribution instead, asking where the curve flattens.
+  It flattens immediately: 16 of 26 cases hit at rank 1, and k=4, k=6 and k=7 buy
+  nothing at all. Going from 5 to the plateau at 8 buys exactly one case —
+  `bio-vague-first`, the one already documented as possibly over-specified —
+  while context share rises from 29%/20% to 46%/32%. Rejected. k=3 is the real
+  alternative (23/26 at 17%/12%) but costs two sound follow-up cases.
+  Like `CHUNK_MAX_CHARS` before it, `top_k` has **no setting**: 5 is a literal in
+  `schemas/rag.py`, `schemas/evaluation.py`, `agent_service.py`,
+  `tools/answer_question.py` and `frontend/lib/api.ts`. Left alone deliberately —
+  introducing a setting whose value you do not want to change is work without
+  benefit.
 - `scripts/sweep_chunk_size.py` compares chunk sizes on that set, in-process
   against `InMemoryVectorStore` — it never writes to the deployed database.
   Verified faithful: at 1200 it reproduces the pgvector numbers to within float
