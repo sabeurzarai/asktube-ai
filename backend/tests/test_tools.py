@@ -1,6 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+from app.core.config import settings
 from app.schemas.chunks import TranscriptChunk
 from app.schemas.rag import ChatMessage, RAGChatResponse, TimestampCitation
 from app.schemas.search import YouTubeSearchResponse, YouTubeVideo
@@ -203,8 +204,10 @@ def test_chunk_transcript_calls_service_with_correct_options() -> None:
 
     service.chunk_transcript.assert_called_once()
     kwargs = service.chunk_transcript.call_args.kwargs
+    # Asserted against the setting, not a literal: the tool used to hardcode
+    # 1200, so changing CHUNK_MAX_CHARS silently did nothing on this path.
     assert kwargs["options"] == ChunkingOptions(
-        max_chunk_chars=1200, overlap_segments=1, include_embeddings=False
+        max_chunk_chars=settings.chunk_max_chars, overlap_segments=1, include_embeddings=False
     )
     assert result["chunk_count"] == 1
     assert result["chunks"][0]["video_id"] == "abc123"

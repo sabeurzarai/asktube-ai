@@ -169,7 +169,7 @@ is lost on restart.
    WHISPER_MODEL=whisper-1
    CHAT_MODEL=gpt-4o-mini
    EMBEDDING_MODEL=text-embedding-3-small
-   CHUNK_MAX_CHARS=1200
+   CHUNK_MAX_CHARS=600
    CHUNK_OVERLAP_SEGMENTS=1
    AUDIO_CACHE_DIR=/app/data/audio_cache
    RAG_EVALUATOR_MODE=heuristic

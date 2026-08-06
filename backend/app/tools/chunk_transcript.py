@@ -1,6 +1,7 @@
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.schemas.transcript import TranscriptResponse
 from app.services.chunking_service import ChunkingOptions, ChunkingService
 
@@ -8,7 +9,7 @@ from app.services.chunking_service import ChunkingOptions, ChunkingService
 class ChunkTranscriptInput(BaseModel):
     transcript: dict = Field(description="TranscriptResponse object serialized as a dict")
     max_chunk_chars: int = Field(
-        default=1200,
+        default_factory=lambda: settings.chunk_max_chars,
         ge=100,
         description="Maximum number of characters per chunk",
     )
@@ -26,13 +27,15 @@ class ChunkTranscriptInput(BaseModel):
 def make_chunk_transcript_tool(service: ChunkingService) -> StructuredTool:
     async def _run(
         transcript: dict,
-        max_chunk_chars: int = 1200,
+        max_chunk_chars: int | None = None,
         overlap_segments: int = 1,
         include_embeddings: bool = False,
     ) -> dict:
         transcript_obj = TranscriptResponse.model_validate(transcript)
         options = ChunkingOptions(
-            max_chunk_chars=max_chunk_chars,
+            # None means "the agent did not specify one", which must follow the
+            # configured setting rather than a literal frozen at import time.
+            max_chunk_chars=max_chunk_chars if max_chunk_chars is not None else settings.chunk_max_chars,
             overlap_segments=overlap_segments,
             include_embeddings=include_embeddings,
         )

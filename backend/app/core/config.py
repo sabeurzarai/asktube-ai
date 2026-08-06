@@ -41,7 +41,12 @@ class Settings(BaseSettings):
         default="sentence-transformers/all-MiniLM-L6-v2",
         alias="LOCAL_EMBEDDING_MODEL",
     )
-    chunk_max_chars: int = Field(default=1200, alias="CHUNK_MAX_CHARS")
+    # 600 rather than 1200: at 1200 the top-5 chunks of a 10k-character video
+    # hand the model 53% of the whole transcript, which undercuts the prompt's
+    # promise to answer only from the provided context. 600 halves that to 29%
+    # without losing hit rate. Measured with scripts/sweep_chunk_size.py - see
+    # its docstring for why hit rate alone cannot justify this number.
+    chunk_max_chars: int = Field(default=600, alias="CHUNK_MAX_CHARS")
     chunk_overlap_segments: int = Field(default=1, alias="CHUNK_OVERLAP_SEGMENTS")
     # Survives only as a compatibility alias: the ChromaDB backend is gone, but
     # CHROMA_COLLECTION_NAME remains the fallback behind VECTOR_COLLECTION_NAME

@@ -107,6 +107,25 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   so callers reuse that history instead of re-reading it; do not reintroduce a
   second read. Cost: one extra chat call per follow-up turn, none on first
   turns.
+- Chunk size: `CHUNK_MAX_CHARS` defaults to **600**, lowered from 1200 on
+  2026-08-06. The justification is the **context share**, not the hit rate: at
+  1200 the top-5 chunks of a 10k-character video handed the model 53% of the
+  whole transcript, which undercuts the prompt's promise to answer only from the
+  provided context; 600 halves that to 29% with no loss of hit rate. The 5-case
+  eval set could **not** discriminate chunk sizes — everything from 450 upward
+  scored 5/5, and its run-to-run noise (one case, from the non-deterministic
+  rewrite) exceeded the difference being measured. Do not cite the hit rate as
+  evidence for this value. `scripts/sweep_chunk_size.py` re-runs the comparison;
+  it reports normalised rank and context share because raw mean rank is not
+  comparable across chunk counts.
+  **Already-ingested videos keep their old chunks** until re-ingested — the store
+  can hold a mix of 1200- and 600-character chunks, which is harmless for
+  retrieval but makes distances across videos non-comparable.
+  Four call sites used to hardcode 1200 and ignore the setting
+  (`tools/ingest_video.py`, `tools/chunk_transcript.py`, and the `Query` defaults
+  in `routes/chunks.py` and `routes/vectorstore.py`); they now read
+  `settings.chunk_max_chars`, and `test_tools.py` asserts against the setting
+  rather than a literal so the regression cannot return silently.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
   scores whether the expected chunk is in the top-k, per conversation case in
   `backend/tests/fixtures/retrieval_eval_cases.json`. Operator-run, not part of
