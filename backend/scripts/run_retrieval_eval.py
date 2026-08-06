@@ -3,60 +3,53 @@
 AskTube AI Retrieval Evaluation Runner
 ========================================
 
-Loads evaluation cases from tests/fixtures/retrieval_eval_cases.json and runs
-each one directly through RAGService.prepare_context, then reports whether
-retrieval surfaced the expected chunk.
+Scores whether retrieval surfaces the expected passage, per conversation case in
+tests/fixtures/retrieval_eval_cases.json, against the DEPLOYED vector store.
 
-This measures retrieval in isolation: the search runs exactly as production
-does, but no LLM call generates an answer. Each case's conversation history is
-seeded synthetically via InMemoryConversationStore.append_exchange, so seeding
-costs nothing and introduces no model variance.
+Two modes, and picking the wrong one makes the numbers meaningless:
 
-Note that "no LLM call" is not quite true for cases WITH history: since
-prepare_context contextualizes follow-up questions, those cases make one chat
-call to rewrite the query. That call is the thing being measured, and its
-result is printed as "rewritten:" beneath the case so a rewrite that invented
-a topic is visible rather than hidden behind a hit rate.
+  live (default)  Runs the real pipeline through RAGService.prepare_context, so
+                  the rewrite step is exercised exactly as production runs it.
+                  Use this to judge RETRIEVAL AS A WHOLE. Costs one chat call
+                  per case with history, and is not reproducible run to run.
 
-It exists to compare hit rates before and after a change to how questions are
-embedded. It is deliberately not part of the automated test suite - it costs
-money (OpenAI embeddings, plus one chat call per follow-up case) and depends
-on state that only exists after manual ingestion.
+  --frozen        Searches with the search_query recorded in the fixture instead
+                  of calling the rewrite. Deterministic and free of chat calls.
+                  Use this whenever you are changing something OTHER than the
+                  rewrite - chunk size, top_k, the embedding model - because the
+                  rewrite's run-to-run variation is larger than the effects those
+                  changes produce, and it will drown them.
+
+Case kinds
+----------
+first_turn          No history, so no rewrite. Regression guards: if these move,
+                    a change has touched queries it should have left alone.
+followup_reference  A pronoun or ellipsis that the history can resolve.
+followup_vague      Under-specified. Read the query it SEARCHED WITH, not just
+                    the verdict - a rewrite that invents a topic can still hit.
+topic_shift         Self-contained and unrelated to the history. Guards the
+                    opposite failure: a rewrite dragging stale context in.
+off_topic           Nothing in the video answers it. Scored INVERTED: passing
+                    means the best distance stayed ABOVE the threshold. Without
+                    these the set cannot detect a system that returns confident
+                    garbage, since every other case rewards returning something.
 
 Prerequisites
 -------------
-1. Video fWjsdhR3z3c must already be ingested in the vector store:
-       curl -X POST http://localhost:8000/api/videos/fWjsdhR3z3c/ingest
-   (or use the frontend processing flow)
+1. Video fWjsdhR3z3c already ingested in the deployed vector store.
+2. DATABASE_URL set (the vector store backend reads it via settings).
+3. OPENAI_API_KEY set (embeddings always; chat too unless --frozen).
 
-2. DATABASE_URL must be set (the vector store backend reads it via settings).
-
-3. OPENAI_API_KEY must be set in backend/.env (required for embeddings).
-
-4. Run from the backend/ directory:
-       cd backend
-       python scripts/run_retrieval_eval.py
-
-Interpreting results
----------------------
-Each case prints one of:
-  HIT   - a returned chunk's text contains expect_chunk_containing
-  MISS  - no returned chunk contains it
-
-Alongside the verdict: the 1-based rank of the matching chunk (or "-" on a
-miss) and the best (lowest) distance among the returned chunks. A final
-"N/M" hit-rate line summarizes the run.
-
-Exit code 0 always - this is a measurement tool, not a pass/fail gate.
+    cd backend && python scripts/run_retrieval_eval.py
+    cd backend && python scripts/run_retrieval_eval.py --frozen
 """
 
+import argparse
 import asyncio
 import json
 import sys
-import textwrap
 from pathlib import Path
 
-# Allow running from backend/ without install
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
@@ -67,122 +60,117 @@ from app.services.vectorstore_service import get_vectorstore_service
 FIXTURE_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "retrieval_eval_cases.json"
 TOP_K = 5
 
-HIT = "HIT "
-MISS = "MISS"
+GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+
+KIND_ORDER = ["first_turn", "followup_reference", "followup_vague", "topic_shift", "off_topic"]
+KIND_TITLE = {
+    "first_turn": "Erst-Fragen (Regressionswaechter, kein Rewrite)",
+    "followup_reference": "Folgefragen mit aufloesbarem Bezug",
+    "followup_vague": "Vage Folgefragen (Halluzinationsrisiko)",
+    "topic_shift": "Themenwechsel (Rewrite darf NICHT verankern)",
+    "off_topic": "Nicht im Video (invertiert: Distanz muss HOCH bleiben)",
+}
 
 
-# ---------------------------------------------------------------------------
-# Single-case evaluation
-# ---------------------------------------------------------------------------
+async def build_seeded_store(case: dict) -> tuple[InMemoryConversationStore, str]:
+    """Seed a conversation without replaying it through the LLM.
 
-async def run_single_case(case: dict, video_id: str) -> tuple[str, str, float | None, str | None]:
-    """Run one retrieval case.
-
-    Returns (status, rank_display, best_distance, rewritten_query), where the
-    last item is None when the question was searched for unchanged.
+    append_exchange takes both halves of a pair at once; the fixture test
+    guarantees the history is paired, so stepping by 2 cannot drop a turn.
     """
-    history = case.get("history", [])
-    question = case["question"]
-    expect_chunk_containing = case["expect_chunk_containing"]
-
     store = InMemoryConversationStore()
     session_id = store.create_session_id()
-
-    # history is a flat list of {"role", "content"} in user/assistant pairs;
-    # append_exchange takes both halves of a pair at once, so walk in steps of 2.
+    history = case.get("history", [])
     for i in range(0, len(history) - 1, 2):
-        user_turn = history[i]
-        assistant_turn = history[i + 1]
-        await store.append_exchange(session_id, user_turn["content"], assistant_turn["content"])
-
-    service = RAGService(config=settings, vectorstore=get_vectorstore_service(), memory=store)
-
-    # Observe the rewrite without altering it: the real method still runs and its
-    # result is what retrieval uses. A rewrite that invents a topic the
-    # conversation never mentioned is the main risk of this feature, and it would
-    # be invisible in a hit rate alone.
-    rewritten: str | None = None
-    inner_contextualize = service._contextualize
-
-    async def recording_contextualize(msg, hist):  # noqa: ANN001, ANN202
-        nonlocal rewritten
-        result = await inner_contextualize(msg, hist)
-        rewritten = result if result != msg else None
-        return result
-
-    service._contextualize = recording_contextualize
-
-    _, retrieved_context, _history = await service.prepare_context(
-        message=question,
-        video_id=video_id,
-        session_id=session_id,
-        top_k=TOP_K,
-    )
-
-    best_distance = min(
-        (r.distance for r in retrieved_context if r.distance is not None),
-        default=None,
-    )
-
-    # Case-insensitive, matching how Task 1 verified expect_chunk_containing
-    # was unique across the video's chunks.
-    needle = expect_chunk_containing.lower()
-    for rank, result in enumerate(retrieved_context, start=1):
-        if needle in result.text.lower():
-            return HIT, str(rank), best_distance, rewritten
-
-    return MISS, "-", best_distance, rewritten
+        await store.append_exchange(session_id, history[i]["content"], history[i + 1]["content"])
+    return store, session_id
 
 
-# ---------------------------------------------------------------------------
-# Report helpers
-# ---------------------------------------------------------------------------
+async def run_case(case: dict, video_id: str, threshold: float, frozen: bool) -> dict:
+    vectorstore = get_vectorstore_service()
 
-STATUS_COLOR = {HIT: "\033[32m", MISS: "\033[31m"}
-RESET = "\033[0m"
+    if frozen:
+        query = case["search_query"]
+        results = await vectorstore.similarity_search(
+            query=query, limit=TOP_K, video_id=video_id
+        )
+    else:
+        store, session_id = await build_seeded_store(case)
+        service = RAGService(config=settings, vectorstore=vectorstore, memory=store)
+        query_seen = {}
+        inner = service._contextualize
+
+        async def recording(msg, hist):  # noqa: ANN001, ANN202
+            result = await inner(msg, hist)
+            query_seen["query"] = result
+            return result
+
+        service._contextualize = recording
+        _, results, _ = await service.prepare_context(
+            message=case["question"], video_id=video_id, session_id=session_id, top_k=TOP_K
+        )
+        query = query_seen.get("query", case["question"])
+
+    best = min((r.distance for r in results if r.distance is not None), default=None)
+
+    if case["kind"] == "off_topic":
+        # Inverted: nothing should match well. A LOW distance is the failure.
+        passed = best is not None and best > case["expect_distance_above"]
+        return {"case": case, "passed": passed, "rank": None, "best": best, "query": query}
+
+    needle = case["expect_chunk_containing"].lower()
+    rank = next((i for i, r in enumerate(results, start=1) if needle in r.text.lower()), None)
+    return {"case": case, "passed": rank is not None, "rank": rank, "best": best, "query": query}
 
 
-def print_row(
-    status: str, name: str, rank: str, distance: float | None, rewritten: str | None = None
-) -> None:
-    color = STATUS_COLOR[status]
-    label = f"{color}{status}{RESET}"
-    distance_display = f"{distance:.4f}" if distance is not None else "-"
-    name_preview = textwrap.shorten(name, width=48, placeholder="...")
-    print(f"  {label}  rank={rank:<3}  distance={distance_display:<8}  {name_preview}")
-    if rewritten:
-        print(f"          searched for: {rewritten!r}")
+def print_row(row: dict) -> None:
+    case = row["case"]
+    verdict = f"{GREEN}PASS{RESET}" if row["passed"] else f"{RED}FAIL{RESET}"
+    if case["kind"] == "off_topic":
+        detail = f'beste Distanz={row["best"]:.4f} (muss >{case["expect_distance_above"]})'
+    else:
+        rank = row["rank"] if row["rank"] else "-"
+        detail = f'rank={rank:<3} beste Distanz={row["best"]:.4f}' if row["best"] is not None else f"rank={rank}"
+    print(f'  {verdict}  {case["id"]:<22} {detail}')
+    if row["query"] != case["question"]:
+        print(f'{DIM}         gesucht mit: {row["query"]!r}{RESET}')
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 async def main() -> int:
-    with FIXTURE_PATH.open() as f:
-        data = json.load(f)
+    parser = argparse.ArgumentParser(description="Retrieval evaluation against the deployed store.")
+    parser.add_argument("--frozen", action="store_true",
+                        help="search with the fixture's recorded queries instead of calling the rewrite")
+    args = parser.parse_args()
 
-    video_id: str = data["video_id"]
-    cases: list[dict] = data.get("cases", [])
+    data = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    video_id = data["video_id"]
+    cases = data["cases"]
+    threshold = data["off_topic_distance_threshold"]
 
-    print(f"\n{'-'*72}")
-    print(f"  AskTube AI - Retrieval Evaluation")
-    print(f"  Video : {video_id}")
-    print(f"  Cases : {len(cases)}")
-    print(f"{'-'*72}\n")
+    mode = "FROZEN (deterministisch, kein Chat-Aufruf)" if args.frozen else "LIVE (Rewrite wird ausgefuehrt)"
+    print(f"\n{'-' * 76}\n  AskTube AI - Retrieval Evaluation\n  Video : {video_id}\n"
+          f"  Faelle: {len(cases)}   Modus: {mode}\n{'-' * 76}")
 
-    hits = 0
-    for case in cases:
-        status, rank, distance, rewritten = await run_single_case(case, video_id)
-        if status == HIT:
-            hits += 1
-        print_row(status, case["name"], rank, distance, rewritten)
+    rows = [await run_case(c, video_id, threshold, args.frozen) for c in cases]
 
-    total = len(cases)
-    print(f"\n{'-'*72}")
-    print(f"  Hit rate: {hits}/{total}")
-    print(f"{'-'*72}\n")
+    for kind in KIND_ORDER:
+        group = [r for r in rows if r["case"]["kind"] == kind]
+        if not group:
+            continue
+        passed = sum(1 for r in group if r["passed"])
+        print(f'\n{KIND_TITLE[kind]}  [{passed}/{len(group)}]')
+        for row in group:
+            print_row(row)
 
+    total = sum(1 for r in rows if r["passed"])
+    ranked = [r["rank"] for r in rows if r["rank"]]
+    print(f"\n{'-' * 76}")
+    print(f"  Bestanden: {total}/{len(rows)}"
+          + (f"   mittlerer Rang der Treffer: {sum(ranked) / len(ranked):.2f}" if ranked else ""))
+    if not args.frozen:
+        print(f"  {YELLOW}Live-Modus: die Umformulierung ist nicht deterministisch. Fuer Vergleiche,"
+              f"\n  bei denen NICHT der Rewrite die Variable ist, --frozen verwenden.{RESET}")
+    print(f"{'-' * 76}\n")
     return 0
 
 

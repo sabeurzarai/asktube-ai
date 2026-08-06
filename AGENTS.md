@@ -114,10 +114,15 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   provided context; 600 halves that to 29% with no loss of hit rate. The 5-case
   eval set could **not** discriminate chunk sizes — everything from 450 upward
   scored 5/5, and its run-to-run noise (one case, from the non-deterministic
-  rewrite) exceeded the difference being measured. Do not cite the hit rate as
-  evidence for this value. `scripts/sweep_chunk_size.py` re-runs the comparison;
-  it reports normalised rank and context share because raw mean rank is not
-  comparable across chunk counts.
+  rewrite) exceeded the difference being measured.
+  **The hardened 18-case set, run frozen, now does discriminate and independently
+  supports 600**: 18/18 at 600 against 17/18 at 450, 900 and 1200 — and different
+  cases fail at different sizes, which is the signature of real signal rather than
+  noise. `first-power` (the vocabulary-mismatch case) fails at 1200, where the
+  coarse chunk dilutes the passage; `vague-branches` fails at 450, where fine
+  chunks split the if/elif branches apart. Two consecutive runs are now bit-identical.
+  `scripts/sweep_chunk_size.py` re-runs the comparison; it reports normalised rank
+  and context share because raw mean rank is not comparable across chunk counts.
   **Already-ingested videos keep their old chunks** until re-ingested — the store
   can hold a mix of 1200- and 600-character chunks, which is harmless for
   retrieval but makes distances across videos non-comparable.
@@ -127,20 +132,48 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `settings.chunk_max_chars`, and `test_tools.py` asserts against the setting
   rather than a literal so the regression cannot return silently.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
-  scores whether the expected chunk is in the top-k, per conversation case in
-  `backend/tests/fixtures/retrieval_eval_cases.json`. Operator-run, not part of
-  the suite — it needs `DATABASE_URL`, `OPENAI_API_KEY` and video `fWjsdhR3z3c`
-  already ingested. It prints the query it actually searched with, so a rewrite
-  that invented a topic is visible rather than hidden behind a hit rate. This is
-  the baseline that makes tuning `CHUNK_MAX_CHARS` or `top_k` measurable instead
-  of guessed.
+  scores 18 conversation cases in
+  `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.
+  Operator-run — it needs `DATABASE_URL`, `OPENAI_API_KEY` and video
+  `fWjsdhR3z3c` already ingested.
+  **Two modes, and the wrong one makes the numbers meaningless.** Default `live`
+  runs the real rewrite, so it judges retrieval as a whole but is not
+  reproducible. `--frozen` searches with the `search_query` recorded per case:
+  deterministic, no chat calls. Use `--frozen` whenever the variable under test
+  is anything OTHER than the rewrite — chunk size, `top_k`, the embedding model
+  — because the rewrite's run-to-run swing is larger than those effects and will
+  drown them. This is not theoretical: the 5-case predecessor moved by a whole
+  case between runs with identical inputs.
+  Re-record the frozen queries with `scripts/refresh_frozen_queries.py` after a
+  deliberate rewrite change, and **read the diff** — a bad rewrite, once frozen,
+  becomes what every later comparison measures.
+  Case kinds: `first_turn` (regression guards, no rewrite), `followup_reference`,
+  `followup_vague`, `topic_shift` (guards the opposite failure — a rewrite
+  dragging stale context into a self-contained question), and `off_topic`, which
+  is **scored inverted**: passing means the best distance stayed ABOVE 0.78. Without
+  those two, the set could not detect a system that answers confidently from
+  irrelevant chunks, because every other case rewards returning something. The
+  threshold is measured — on-topic questions score 0.48–0.66, off-topic 0.87–0.94.
+  `tests/test_retrieval_eval_fixture.py` validates the fixture offline (no DB, no
+  key): every expected substring must identify **exactly one** chunk at sizes 450,
+  600, 900 and 1200. That check earned its place — 7 of 20 candidate substrings
+  failed it, including `try and accept` and `hey there`, and `convert mario` is
+  unique at 450/900/1200 but duplicated at 600 by the overlap segment. An
+  ambiguous substring does not fail loudly; it makes its case pass for the wrong
+  reason. The transcript is committed at
+  `tests/fixtures/transcript_fWjsdhR3z3c.json` so the check needs no network.
+- `scripts/sweep_chunk_size.py` compares chunk sizes on that set, in-process
+  against `InMemoryVectorStore` — it never writes to the deployed database.
+  Verified faithful: at 1200 it reproduces the pgvector numbers to within float
+  noise. It reports normalised rank and context share because raw mean rank is
+  not comparable across chunk counts.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **209 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **219 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **205 passed, 5
+  local-embedding tests skip instead of running, giving **215 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

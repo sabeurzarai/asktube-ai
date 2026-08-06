@@ -52,10 +52,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
-from app.schemas.rag import ChatMessage
 from app.services.chunking_service import build_semantic_chunks
-from app.services.conversation_store import InMemoryConversationStore
-from app.services.rag_service import RAGService
 from app.schemas.transcript import TranscriptResponse
 from app.services.transcript_service import TranscriptFetchOptions, get_transcript_service
 from app.services.vector_store.memory import InMemoryVectorStore
@@ -69,14 +66,21 @@ OVERLAP_SEGMENTS = 1
 GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
 
 
-async def resolve_search_queries(cases: list[dict]) -> list[str]:
-    """Contextualize each case once, so every setting searches with the same text."""
-    service = RAGService(config=settings, vectorstore=None, memory=InMemoryConversationStore())
-    queries = []
-    for case in cases:
-        history = [ChatMessage(role=t["role"], content=t["content"]) for t in case.get("history", [])]
-        queries.append(await service._contextualize(case["question"], history))
-    return queries
+def resolve_search_queries(cases: list[dict]) -> list[str]:
+    """Use the fixture's FROZEN queries.
+
+    Earlier this called _contextualize live, once per run. That was already
+    better than calling it per setting, but still not good enough: two runs of
+    this sweep with an identical transcript and identical, deterministic
+    chunking disagreed by a whole case, because the rewrite is a chat call. The
+    queries now come from the fixture, so chunk size is genuinely the only thing
+    that varies and the sweep costs no chat calls at all.
+
+    Re-record them with scripts/refresh_frozen_queries.py when the rewrite
+    prompt changes - and read the diff, because a bad rewrite frozen into the
+    fixture would silently become the thing every future comparison measures.
+    """
+    return [case["search_query"] for case in cases]
 
 
 def substring_occurrences(chunks, needle: str) -> int:
@@ -95,20 +99,31 @@ async def score_setting(transcript, cases, queries, max_chars: int) -> dict:
 
     rows, hits = [], 0
     for case, query in zip(cases, queries, strict=True):
-        needle = case["expect_chunk_containing"]
-        occurrences = substring_occurrences(chunks, needle)
         results = await service.similarity_search(
             query=query, limit=TOP_K, video_id=transcript.video_id
         )
+        best = min((r.distance for r in results if r.distance is not None), default=None)
+
+        if case["kind"] == "off_topic":
+            # Inverted: nothing in the video answers this, so a LOW distance is
+            # the failure. Chunk size shifts these too - finer chunks can raise
+            # a spurious similarity - so they belong in the sweep, not beside it.
+            passed = best is not None and best > case["expect_distance_above"]
+            hits += bool(passed)
+            rows.append({"name": case["name"], "kind": case["kind"], "rank": None,
+                         "distance": best, "occurrences": 1, "passed": passed})
+            continue
+
+        needle = case["expect_chunk_containing"]
         rank = next(
             (i for i, r in enumerate(results, start=1) if needle.lower() in r.text.lower()),
             None,
         )
         if rank:
             hits += 1
-        best = min((r.distance for r in results if r.distance is not None), default=None)
-        rows.append({"name": case["name"], "rank": rank, "distance": best,
-                     "occurrences": occurrences})
+        rows.append({"name": case["name"], "kind": case["kind"], "rank": rank,
+                     "distance": best, "occurrences": substring_occurrences(chunks, needle),
+                     "passed": rank is not None})
 
     lengths = [len(c.text) for c in chunks]
     return {
@@ -126,10 +141,8 @@ def print_setting(result: dict, total_cases: int) -> None:
     print(f'\nCHUNK_MAX_CHARS={result["max_chars"]:<5} chunks={result["chunk_count"]:<3} '
           f'mittlere Laenge={result["mean_len"]:<5} Treffer={result["hits"]}/{total_cases}{flag}')
     for row in result["rows"]:
-        if row["rank"]:
-            verdict = f"{GREEN}HIT {RESET} rank={row['rank']}"
-        else:
-            verdict = f"{RED}MISS{RESET} rank=-"
+        marker = "dist" if row["kind"] == "off_topic" else ("rank=" + str(row["rank"] or "-"))
+        verdict = f"{GREEN}PASS{RESET} {marker}" if row["passed"] else f"{RED}FAIL{RESET} {marker}"
         distance = f'{row["distance"]:.4f}' if row["distance"] is not None else "-"
         warn = "" if row["occurrences"] == 1 else f'  {YELLOW}<- Substring in {row["occurrences"]} Chunks, nicht eindeutig{RESET}'
         print(f'   {verdict}  dist={distance}  {row["name"][:46]}{warn}')
@@ -168,7 +181,7 @@ async def main() -> int:
     print(f"Transkript: {len(transcript.segments)} Segmente, "
           f"{sum(len(s.text) for s in transcript.segments)} Zeichen")
 
-    queries = await resolve_search_queries(cases)
+    queries = resolve_search_queries(cases)
     print("\nSuchanfragen (einmal berechnet, ueber alle Einstellungen konstant):")
     for case, query in zip(cases, queries, strict=True):
         marker = "=" if query == case["question"] else ">"

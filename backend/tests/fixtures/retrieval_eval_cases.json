@@ -1,44 +1,292 @@
 {
+  "schema_version": 2,
   "video_id": "fWjsdhR3z3c",
+  "transcript_fixture": "transcript_fWjsdhR3z3c.json",
+  "notes": [
+    "Every expect_chunk_containing substring was verified to appear in EXACTLY ONE chunk at chunk sizes 450, 600, 900 and 1200. test_retrieval_eval_fixture.py re-checks this on every run, offline. Seven earlier candidates were rejected by that check - 'try and accept' and 'hey there' look distinctive to a human but land in two chunks, and 'convert mario' is unique at 450/900/1200 yet duplicated at 600 by the overlap segment. Do not add a case without running the check.",
+    "search_query is the FROZEN rewrite: what _contextualize produced for that case, recorded so a measurement can hold it constant. The rewrite calls a chat model and is not deterministic; leaving it live made the 5-case predecessor swing by a whole case between runs, which was larger than the effect any chunk-size comparison was trying to measure. Runners use it in frozen mode and ignore it in live mode.",
+    "off_topic cases assert the OPPOSITE of a hit: nothing in the video should match well. Without them a case set cannot detect a system that returns confident garbage, because every other case rewards returning something. The 0.78 threshold is measured, not guessed - on-topic questions score 0.48-0.66 and off-topic ones 0.87-0.94 at chunk size 600."
+  ],
+  "off_topic_distance_threshold": 0.78,
   "cases": [
     {
-      "name": "first turn, specific question about arithmetic",
+      "id": "first-addition",
+      "kind": "first_turn",
+      "name": "first turn, arithmetic",
       "history": [],
       "question": "How do I do addition in Python?",
-      "expect_chunk_containing": "plus symbol"
+      "search_query": "How do I do addition in Python?",
+      "expect_chunk_containing": "plus symbol",
+      "guards": "A first turn must be searched with the raw question - there is no history to resolve against, so a rewrite could only make a good query worse."
     },
     {
-      "name": "first turn, specific question about loops",
+      "id": "first-while",
+      "kind": "first_turn",
+      "name": "first turn, while loop",
       "history": [],
       "question": "How does a while loop work?",
-      "expect_chunk_containing": "while loop"
+      "search_query": "How does a while loop work?",
+      "expect_chunk_containing": "while loop",
+      "guards": "Same as first-addition."
     },
     {
+      "id": "first-editor",
+      "kind": "first_turn",
+      "name": "first turn, tooling",
+      "history": [],
+      "question": "What code editor does the tutorial use?",
+      "search_query": "What code editor does the tutorial use?",
+      "expect_chunk_containing": "pycharm",
+      "guards": "The standalone form of followup-it-uses. If this hits and followup-it-uses misses, the rewrite is the problem, not retrieval."
+    },
+    {
+      "id": "first-power",
+      "kind": "first_turn",
+      "name": "first turn, exponentiation",
+      "history": [],
+      "question": "How do I raise a number to a power in Python?",
+      "search_query": "How do I raise a number to a power in Python?",
+      "expect_chunk_containing": "two asterisks",
+      "guards": "Vocabulary mismatch: the transcript never says 'raise to a power', only 'exponential power' and 'two asterisks'."
+    },
+    {
+      "id": "first-list",
+      "kind": "first_turn",
+      "name": "first turn, lists",
+      "history": [],
+      "question": "How do I create a list?",
+      "search_query": "How do I create a list?",
+      "expect_chunk_containing": "angle brackets",
+      "guards": "The weakest on-topic question measured (0.6644 at size 600). Kept deliberately as the case most likely to break first."
+    },
+    {
+      "id": "first-pass",
+      "kind": "first_turn",
+      "name": "first turn, pass keyword",
+      "history": [],
+      "question": "What is the pass keyword for?",
+      "search_query": "What is the pass keyword for?",
+      "expect_chunk_containing": "blueprints",
+      "guards": "The expected chunk is the one explaining WHY pass exists, not the one introducing it."
+    },
+    {
+      "id": "followup-it-uses",
+      "kind": "followup_reference",
       "name": "follow-up referring to the previous answer",
       "history": [
-        {"role": "user", "content": "What is this video about?"},
-        {"role": "assistant", "content": "This video is about getting started with Python in less than 10 minutes."}
+        {
+          "role": "user",
+          "content": "What is this video about?"
+        },
+        {
+          "role": "assistant",
+          "content": "This video is about getting started with Python in less than 10 minutes."
+        }
       ],
       "question": "And what did you just say it uses?",
-      "expect_chunk_containing": "pycharm"
+      "search_query": "What did you just say the video uses to get started with Python?",
+      "expect_chunk_containing": "pycharm",
+      "guards": "The originally observed failure. Without the rewrite this carries no information about the video and returns arbitrary neighbours."
     },
     {
-      "name": "follow-up asking for an example of the previous topic",
+      "id": "followup-example",
+      "kind": "followup_reference",
+      "name": "follow-up asking for an example",
       "history": [
-        {"role": "user", "content": "What does the pass keyword do?"},
-        {"role": "assistant", "content": "pass lets you define a function without writing its logic yet."}
+        {
+          "role": "user",
+          "content": "What does the pass keyword do?"
+        },
+        {
+          "role": "assistant",
+          "content": "pass lets you define a function without writing its logic yet."
+        }
       ],
       "question": "give me an example of one",
-      "expect_chunk_containing": "run game"
+      "search_query": "give me an example of the pass keyword in a function definition",
+      "expect_chunk_containing": "run game",
+      "guards": "'one' resolves to a function stub, which only the history can supply."
     },
     {
-      "name": "vague follow-up (hallucination risk case)",
+      "id": "followup-stop",
+      "kind": "followup_reference",
+      "name": "follow-up asking how to exit",
       "history": [
-        {"role": "user", "content": "How does a while loop work?"},
-        {"role": "assistant", "content": "It increments i by one until i reaches five."}
+        {
+          "role": "user",
+          "content": "What is an infinite loop?"
+        },
+        {
+          "role": "assistant",
+          "content": "It is a while true loop whose condition never becomes false."
+        }
+      ],
+      "question": "and how do I make it stop?",
+      "search_query": "how do I make an infinite loop stop?",
+      "expect_chunk_containing": "break statement",
+      "guards": "'it' is the loop from the previous turn."
+    },
+    {
+      "id": "followup-casesens",
+      "kind": "followup_reference",
+      "name": "follow-up about variable naming",
+      "history": [
+        {
+          "role": "user",
+          "content": "How do I assign a value to a variable?"
+        },
+        {
+          "role": "assistant",
+          "content": "Pick a name such as item and assign it a value, for example a string."
+        }
+      ],
+      "question": "is it case sensitive?",
+      "search_query": "Is variable assignment case sensitive?",
+      "expect_chunk_containing": "case sensitive",
+      "guards": "Answerable only if 'it' resolves to variable names."
+    },
+    {
+      "id": "followup-never-false",
+      "kind": "followup_reference",
+      "name": "follow-up about a condition never ending",
+      "history": [
+        {
+          "role": "user",
+          "content": "How does a while loop work?"
+        },
+        {
+          "role": "assistant",
+          "content": "It increments i by one until i reaches five, then exits."
+        }
+      ],
+      "question": "what if the condition is never false?",
+      "search_query": "what happens if the condition in a while loop is never false?",
+      "expect_chunk_containing": "infinite loop",
+      "guards": "Carries real content already, so the rewrite must not make it worse - the failure mode this case watches is over-rewriting."
+    },
+    {
+      "id": "vague-next",
+      "kind": "followup_vague",
+      "name": "vague follow-up, next topic",
+      "history": [
+        {
+          "role": "user",
+          "content": "How does a while loop work?"
+        },
+        {
+          "role": "assistant",
+          "content": "It increments i by one until i reaches five."
+        }
       ],
       "question": "and the next one?",
-      "expect_chunk_containing": "break sta"
+      "search_query": "How does a while loop work?",
+      "expect_chunk_containing": "break statement",
+      "guards": "The hallucination guard. The conversation never says what comes next in the video, so the rewrite must NOT invent a topic. Measured behaviour so far: the model restates the previous question instead of advancing - it does not hallucinate, but it also does not resolve the reference, and the case has passed on chunk adjacency rather than on capability. Read its rewrite, not only its verdict."
+    },
+    {
+      "id": "vague-branches",
+      "kind": "followup_vague",
+      "name": "vague follow-up, other branches",
+      "history": [
+        {
+          "role": "user",
+          "content": "How do if statements work?"
+        },
+        {
+          "role": "assistant",
+          "content": "If the age is more than 21 the program prints that you are old."
+        }
+      ],
+      "question": "what about the other branches?",
+      "search_query": "what about the other branches of if statements?",
+      "expect_chunk_containing": "you are getting old",
+      "guards": "'other branches' is resolvable from the history - unlike vague-next, a correct rewrite is genuinely possible here."
+    },
+    {
+      "id": "vague-another",
+      "kind": "followup_vague",
+      "name": "vague follow-up, another instance",
+      "history": [
+        {
+          "role": "user",
+          "content": "Why would I write a function?"
+        },
+        {
+          "role": "assistant",
+          "content": "To reuse code - the greeting function is called once with mario."
+        }
+      ],
+      "question": "show me another one",
+      "search_query": "show me another reason to write a function",
+      "expect_chunk_containing": "luigi",
+      "guards": "'another one' means a second call, not a second function. A rewrite that reads it as 'another function' will land elsewhere."
+    },
+    {
+      "id": "shift-errors",
+      "kind": "topic_shift",
+      "name": "topic shift away from the history",
+      "history": [
+        {
+          "role": "user",
+          "content": "How does a for loop work?"
+        },
+        {
+          "role": "assistant",
+          "content": "for i in range of three loops over three values and prints hello with i."
+        }
+      ],
+      "question": "actually, how do I handle errors?",
+      "search_query": "How do I handle errors?",
+      "expect_chunk_containing": "exception occurs",
+      "guards": "The opposite failure of followup-it-uses: the question is already self-contained and has NOTHING to do with the history. A rewrite that drags loops into it will retrieve the wrong passage. No earlier case tested this direction."
+    },
+    {
+      "id": "shift-quotes",
+      "kind": "topic_shift",
+      "name": "explicit topic abandonment",
+      "history": [
+        {
+          "role": "user",
+          "content": "How do I multiply two numbers?"
+        },
+        {
+          "role": "assistant",
+          "content": "You add an asterisk between the two values."
+        }
+      ],
+      "question": "forget that - what are quotation marks for?",
+      "search_query": "What are quotation marks for?",
+      "expect_chunk_containing": "quotation marks",
+      "guards": "States the abandonment outright. If even this gets anchored to the prior topic, the rewrite prompt weights history too heavily."
+    },
+    {
+      "id": "offtopic-postgres",
+      "kind": "off_topic",
+      "name": "off-topic, database connection",
+      "history": [],
+      "question": "How do I connect to a PostgreSQL database?",
+      "search_query": "How do I connect to a PostgreSQL database?",
+      "expect_distance_above": 0.78,
+      "guards": "Nothing in the video answers this. Every other case rewards returning something, so without a case like this the set cannot detect a system that answers confidently from irrelevant chunks."
+    },
+    {
+      "id": "offtopic-kubernetes",
+      "kind": "off_topic",
+      "name": "off-topic, infrastructure",
+      "history": [
+        {
+          "role": "user",
+          "content": "How does a while loop work?"
+        },
+        {
+          "role": "assistant",
+          "content": "It increments i by one until i reaches five."
+        }
+      ],
+      "question": "How do I configure Kubernetes ingress with TLS?",
+      "search_query": "How do I configure Kubernetes ingress with TLS?",
+      "expect_distance_above": 0.78,
+      "guards": "Off-topic WITH history, so it also checks that the rewrite does not manufacture a false connection to the conversation just because history exists."
     }
   ]
 }
