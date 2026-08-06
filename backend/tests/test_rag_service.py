@@ -218,3 +218,98 @@ async def test_contextualize_falls_back_when_the_model_returns_blank(monkeypatch
     )
 
     assert await service._contextualize("and the next one?", some_history()) == "and the next one?"
+
+
+# ---------------------------------------------------------------------------
+# The rewrite reaches retrieval - and only retrieval
+# ---------------------------------------------------------------------------
+
+
+CAPTURED_PROMPTS: list[str] = []
+
+
+class CapturingChatModel(FakeListChatModel):
+    """Records every prompt it is invoked with.
+
+    A module-level list rather than a class attribute on purpose: FakeListChatModel
+    is a pydantic model, so an annotated class attribute would become a field.
+    """
+
+    def _call(self, messages, stop=None, run_manager=None, **kwargs):  # noqa: ANN001
+        CAPTURED_PROMPTS.append("\n".join(str(m.content) for m in messages))
+        return super()._call(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+class CapturingVectorStoreService:
+    """Records the query it was searched with."""
+
+    def __init__(self) -> None:
+        self.last_query: str | None = None
+
+    async def similarity_search(self, query, limit, video_id):  # noqa: ANN001
+        self.last_query = query
+        return [make_result()]
+
+
+async def seeded_memory() -> tuple[InMemoryConversationStore, str]:
+    memory = InMemoryConversationStore()
+    session_id = memory.create_session_id()
+    await memory.append_exchange(session_id, "What is this video about?", "Getting started with Python.")
+    return memory, session_id
+
+
+async def test_search_receives_the_rewritten_query(monkeypatch) -> None:  # noqa: ANN001
+    memory, session_id = await seeded_memory()
+    service = make_rag_service(memory)
+    service.vectorstore = CapturingVectorStoreService()
+    # One model instance, so its responses are consumed in order: the rewrite call
+    # takes the first, generation the second.
+    model = FakeListChatModel(responses=["which code editor does the tutorial use", "a grounded answer"])
+    monkeypatch.setattr(service, "create_chat_model", lambda streaming: model)
+
+    await service.answer(
+        message="And what does it use?", video_id="vid1", session_id=session_id, top_k=3
+    )
+
+    assert service.vectorstore.last_query == "which code editor does the tutorial use"
+
+
+async def test_first_turn_is_searched_with_the_raw_question(monkeypatch) -> None:  # noqa: ANN001
+    # The regression guard for the whole feature: with no history there is nothing to
+    # resolve against, so a rewrite could only make a good query worse.
+    service = make_rag_service()
+    service.vectorstore = CapturingVectorStoreService()
+    monkeypatch.setattr(
+        service, "create_chat_model", lambda streaming: FakeListChatModel(responses=["a rewrite"])
+    )
+
+    await service.answer(
+        message="How do I do addition in Python?", video_id="vid1", session_id=None, top_k=3
+    )
+
+    assert service.vectorstore.last_query == "How do I do addition in Python?"
+
+
+async def test_generation_receives_the_original_question_not_the_rewrite(monkeypatch) -> None:  # noqa: ANN001
+    """The rewrite is for retrieval only.
+
+    Feeding it into generation would answer a question the user never asked - a
+    rewrite is a guess about intent, not a statement of it. This test is what stops
+    someone later "simplifying" the code by passing the rewrite straight through.
+    """
+    memory, session_id = await seeded_memory()
+    service = make_rag_service(memory)
+    service.vectorstore = CapturingVectorStoreService()
+    CAPTURED_PROMPTS.clear()
+    model = CapturingChatModel(responses=["which code editor does the tutorial use", "a grounded answer"])
+    monkeypatch.setattr(service, "create_chat_model", lambda streaming: model)
+
+    await service.answer(
+        message="And what does it use?", video_id="vid1", session_id=session_id, top_k=3
+    )
+
+    # prompts[0] is the rewrite call, prompts[1] is generation.
+    assert len(CAPTURED_PROMPTS) == 2
+    generation_prompt = CAPTURED_PROMPTS[1]
+    assert "And what does it use?" in generation_prompt
+    assert "which code editor does the tutorial use" not in generation_prompt

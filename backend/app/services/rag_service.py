@@ -160,7 +160,7 @@ class RAGService:
     ) -> RAGChatResponse:
         answer_start = time.perf_counter()
         retrieval_start = time.perf_counter()
-        active_session_id, retrieved_context = await self.prepare_context(
+        active_session_id, retrieved_context, history = await self.prepare_context(
             message=message,
             video_id=video_id,
             session_id=session_id,
@@ -191,7 +191,6 @@ class RAGService:
                 memory=messages,
             )
 
-        history = await self._get_history(active_session_id)
         chain = RAG_PROMPT | self.create_chat_model(streaming=False)
         generation_start = time.perf_counter()
         response = await chain.ainvoke(
@@ -246,7 +245,7 @@ class RAGService:
     ) -> AsyncIterator[RAGStreamEvent]:
         answer_start = time.perf_counter()
         retrieval_start = time.perf_counter()
-        active_session_id, retrieved_context = await self.prepare_context(
+        active_session_id, retrieved_context, history = await self.prepare_context(
             message=message,
             video_id=video_id,
             session_id=session_id,
@@ -254,7 +253,6 @@ class RAGService:
         )
         retrieval_ms = (time.perf_counter() - retrieval_start) * 1000
 
-        history = await self._get_history(active_session_id)
         yield RAGStreamEvent(
             type="context",
             session_id=active_session_id,
@@ -348,17 +346,26 @@ class RAGService:
         video_id: str | None,
         session_id: str | None,
         top_k: int,
-    ) -> tuple[str, list[VectorSearchResult]]:
+    ) -> tuple[str, list[VectorSearchResult], list[ChatMessage]]:
+        """Resolve the session, search, and hand back the history that was used.
+
+        The history is returned rather than re-read by the caller: it is needed
+        twice - once to contextualize the search query and once to build the
+        generation prompt - and against Postgres each read is a network round
+        trip on the answer path.
+        """
         require_chat_credentials(self.config)
 
         active_session_id = session_id or self.memory.create_session_id()
+        history = await self._get_history(active_session_id)
+        search_query = await self._contextualize(message, history)
         retrieved_context = await self.vectorstore.similarity_search(
-            query=message,
+            query=search_query,
             limit=top_k,
             video_id=video_id,
         )
 
-        return active_session_id, retrieved_context
+        return active_session_id, retrieved_context, history
 
     def create_chat_model(self, streaming: bool) -> ChatOpenAI:
         # Delegate to the shared factory so chat-model construction lives in

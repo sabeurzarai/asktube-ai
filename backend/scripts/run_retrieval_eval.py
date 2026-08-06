@@ -7,17 +7,21 @@ Loads evaluation cases from tests/fixtures/retrieval_eval_cases.json and runs
 each one directly through RAGService.prepare_context, then reports whether
 retrieval surfaced the expected chunk.
 
-This measures retrieval in isolation: the raw user message is embedded and
-used to search the vector store exactly as production does, but no LLM call
-generates an answer. Each case's conversation history is seeded synthetically
-via InMemoryConversationStore.append_exchange, so seeding costs nothing and
-introduces no model variance.
+This measures retrieval in isolation: the search runs exactly as production
+does, but no LLM call generates an answer. Each case's conversation history is
+seeded synthetically via InMemoryConversationStore.append_exchange, so seeding
+costs nothing and introduces no model variance.
 
-This is the BASELINE runner: it exists to record today's hit rate (before any
-fix to how follow-up questions are embedded) so a later fix has a number to
-beat. It is deliberately not part of the automated test suite - it costs
-money (OpenAI embeddings) and depends on state that only exists after manual
-ingestion.
+Note that "no LLM call" is not quite true for cases WITH history: since
+prepare_context contextualizes follow-up questions, those cases make one chat
+call to rewrite the query. That call is the thing being measured, and its
+result is printed as "rewritten:" beneath the case so a rewrite that invented
+a topic is visible rather than hidden behind a hit rate.
+
+It exists to compare hit rates before and after a change to how questions are
+embedded. It is deliberately not part of the automated test suite - it costs
+money (OpenAI embeddings, plus one chat call per follow-up case) and depends
+on state that only exists after manual ingestion.
 
 Prerequisites
 -------------
@@ -71,8 +75,12 @@ MISS = "MISS"
 # Single-case evaluation
 # ---------------------------------------------------------------------------
 
-async def run_single_case(case: dict, video_id: str) -> tuple[str, str, float | None]:
-    """Run one retrieval case. Returns (status, rank_display, best_distance)."""
+async def run_single_case(case: dict, video_id: str) -> tuple[str, str, float | None, str | None]:
+    """Run one retrieval case.
+
+    Returns (status, rank_display, best_distance, rewritten_query), where the
+    last item is None when the question was searched for unchanged.
+    """
     history = case.get("history", [])
     question = case["question"]
     expect_chunk_containing = case["expect_chunk_containing"]
@@ -89,7 +97,22 @@ async def run_single_case(case: dict, video_id: str) -> tuple[str, str, float | 
 
     service = RAGService(config=settings, vectorstore=get_vectorstore_service(), memory=store)
 
-    _, retrieved_context = await service.prepare_context(
+    # Observe the rewrite without altering it: the real method still runs and its
+    # result is what retrieval uses. A rewrite that invents a topic the
+    # conversation never mentioned is the main risk of this feature, and it would
+    # be invisible in a hit rate alone.
+    rewritten: str | None = None
+    inner_contextualize = service._contextualize
+
+    async def recording_contextualize(msg, hist):  # noqa: ANN001, ANN202
+        nonlocal rewritten
+        result = await inner_contextualize(msg, hist)
+        rewritten = result if result != msg else None
+        return result
+
+    service._contextualize = recording_contextualize
+
+    _, retrieved_context, _history = await service.prepare_context(
         message=question,
         video_id=video_id,
         session_id=session_id,
@@ -106,9 +129,9 @@ async def run_single_case(case: dict, video_id: str) -> tuple[str, str, float | 
     needle = expect_chunk_containing.lower()
     for rank, result in enumerate(retrieved_context, start=1):
         if needle in result.text.lower():
-            return HIT, str(rank), best_distance
+            return HIT, str(rank), best_distance, rewritten
 
-    return MISS, "-", best_distance
+    return MISS, "-", best_distance, rewritten
 
 
 # ---------------------------------------------------------------------------
@@ -119,12 +142,16 @@ STATUS_COLOR = {HIT: "\033[32m", MISS: "\033[31m"}
 RESET = "\033[0m"
 
 
-def print_row(status: str, name: str, rank: str, distance: float | None) -> None:
+def print_row(
+    status: str, name: str, rank: str, distance: float | None, rewritten: str | None = None
+) -> None:
     color = STATUS_COLOR[status]
     label = f"{color}{status}{RESET}"
     distance_display = f"{distance:.4f}" if distance is not None else "-"
     name_preview = textwrap.shorten(name, width=48, placeholder="...")
     print(f"  {label}  rank={rank:<3}  distance={distance_display:<8}  {name_preview}")
+    if rewritten:
+        print(f"          searched for: {rewritten!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +173,10 @@ async def main() -> int:
 
     hits = 0
     for case in cases:
-        status, rank, distance = await run_single_case(case, video_id)
+        status, rank, distance, rewritten = await run_single_case(case, video_id)
         if status == HIT:
             hits += 1
-        print_row(status, case["name"], rank, distance)
+        print_row(status, case["name"], rank, distance, rewritten)
 
     total = len(cases)
     print(f"\n{'-'*72}")
