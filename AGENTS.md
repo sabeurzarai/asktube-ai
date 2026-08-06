@@ -92,15 +92,41 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `CONVERSATION_BACKEND=memory` remains a supported rollback. Migration `0003`
   creates `conversation_messages`; run migrations with `cd backend && python -m
   alembic upgrade head`.
+- Retrieval query contextualization: `RAGService.prepare_context` does **not**
+  embed the raw user message. It loads the conversation history once, and
+  `_contextualize` rewrites a follow-up into a standalone search query before
+  the vector search. Three rules, each with a test guarding it:
+  **no history → no rewrite and no model call** (a first turn has nothing to
+  resolve against, so a rewrite could only make a good query worse);
+  **rewrite failure or blank response → the raw message** (retrieval quality is
+  an enhancement and must never prevent an answer — same degrade-not-fail
+  principle as conversation memory);
+  **generation always receives the ORIGINAL question**, never the rewrite — a
+  rewrite is a guess about intent, and answering it would answer a question the
+  user never asked. `prepare_context` returns `(session_id, context, history)`
+  so callers reuse that history instead of re-reading it; do not reintroduce a
+  second read. Cost: one extra chat call per follow-up turn, none on first
+  turns.
+- Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
+  scores whether the expected chunk is in the top-k, per conversation case in
+  `backend/tests/fixtures/retrieval_eval_cases.json`. Operator-run, not part of
+  the suite — it needs `DATABASE_URL`, `OPENAI_API_KEY` and video `fWjsdhR3z3c`
+  already ingested. It prints the query it actually searched with, so a rewrite
+  that invented a topic is visible rather than hidden behind a hit rate. This is
+  the baseline that makes tuning `CHUNK_MAX_CHARS` or `top_k` measurable instead
+  of guessed.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **197 passed, 1 skipped** with
-  local-embedding extras installed, or **193 passed, 5 skipped** without them
-  (the extra 4 skips = local-embedding tests without extras; the 1 skip present
-  either way is the Alembic migration test, which skips unless
-  `TEST_DATABASE_URL` is set). Set `OPENAI_API_KEY` to any dummy value first or
-  9 speech tests fail with 503.
+- Backend: `cd backend && python -m pytest` → expect **209 passed, 1 skipped**
+  with local-embedding extras installed (the 1 skip is the Alembic migration
+  test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
+  local-embedding tests skip instead of running, giving **205 passed, 5
+  skipped** — derived from the measured number, not separately measured. Set
+  `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
+  The WARNING count is **not** a regression signal: `test_speech_route.py`
+  intermittently emits 0–3 `PytestUnhandledThreadExceptionWarning` from an
+  analytics write reaching aiosqlite after the test's event loop closed.
 - Frontend: `cd frontend && npx tsc --noEmit && npm test` → expect **79 passed**.
 - Frontend voice tests stub `@/lib/api` wholesale with `vi.mock` — `lib/analytics.ts`
   must NOT import from `lib/api.ts` (duplicate the resolver logic, keep in sync).
