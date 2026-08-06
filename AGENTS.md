@@ -115,12 +115,22 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   eval set could **not** discriminate chunk sizes — everything from 450 upward
   scored 5/5, and its run-to-run noise (one case, from the non-deterministic
   rewrite) exceeded the difference being measured.
-  **The hardened 18-case set, run frozen, now does discriminate and independently
-  supports 600**: 18/18 at 600 against 17/18 at 450, 900 and 1200 — and different
-  cases fail at different sizes, which is the signature of real signal rather than
-  noise. `first-power` (the vocabulary-mismatch case) fails at 1200, where the
-  coarse chunk dilutes the passage; `vague-branches` fails at 450, where fine
-  chunks split the if/elif branches apart. Two consecutive runs are now bit-identical.
+  The hardened set, run frozen, is deterministic — two consecutive sweeps are
+  bit-identical — and on the FIRST video alone it appeared to confirm 600 (18/18
+  against 17/18 everywhere else).
+  **Adding the second video withdrew that confirmation, and the withdrawal is the
+  more useful result**: across 29 cases and two videos, 600 and 1200 tie at 28/29,
+  450 and 900 score 27/29. Hit rate does not separate 600 from 1200. Do not cite
+  it as evidence for the default; the justification remains the context share
+  (600: 29%/20% of each video, 1200: 53%/41%) and the normalised rank, both of
+  which are arithmetic rather than case-set-dependent. This is exactly the
+  over-claim a single video invites, and the reason the second one was added.
+  Which cases fail still carries signal: `first-power` (vocabulary mismatch)
+  fails only at 1200, where the coarse chunk dilutes the passage; `vague-branches`
+  fails at 450 and 900. `bio-vague-first` fails at every size except 1200 and is a
+  known-weak case — "and what happens first?" is arguably answered by the overview
+  passage too, so its expectation may be over-specified. It is kept because a
+  consistently failing case is informative as long as nobody mistakes it for noise.
   `scripts/sweep_chunk_size.py` re-runs the comparison; it reports normalised rank
   and context share because raw mean rank is not comparable across chunk counts.
   **Already-ingested videos keep their old chunks** until re-ingested — the store
@@ -132,10 +142,16 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `settings.chunk_max_chars`, and `test_tools.py` asserts against the setting
   rather than a literal so the regression cannot return silently.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
-  scores 18 conversation cases in
+  scores 29 conversation cases across **two videos** in
   `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.
-  Operator-run — it needs `DATABASE_URL`, `OPENAI_API_KEY` and video
-  `fWjsdhR3z3c` already ingested.
+  Operator-run — it needs `DATABASE_URL`, `OPENAI_API_KEY` and BOTH videos
+  (`fWjsdhR3z3c`, Python tutorial; `sQK3Yr4Sc_k`, Crash Course photosynthesis)
+  already ingested. A missing video does not error — its cases just return
+  nothing and read as retrieval failures. The second video is deliberately as
+  far from programming as possible: with no shared vocabulary, a question the
+  Python video answers scores 0.93 against the biology chunks, which is what
+  makes the `bio-crossvideo-python` case meaningful — it checks that the
+  `video_id` filter really scopes the search.
   **Two modes, and the wrong one makes the numbers meaningless.** Default `live`
   runs the real rewrite, so it judges retrieval as a whole but is not
   reproducible. `--frozen` searches with the `search_query` recorded per case:
@@ -155,8 +171,8 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   irrelevant chunks, because every other case rewards returning something. The
   threshold is measured — on-topic questions score 0.48–0.66, off-topic 0.87–0.94.
   `tests/test_retrieval_eval_fixture.py` validates the fixture offline (no DB, no
-  key): every expected substring must identify **exactly one** chunk at sizes 450,
-  600, 900 and 1200. That check earned its place — 7 of 20 candidate substrings
+  key): every expected substring must identify **exactly one** chunk of ITS OWN video at
+  sizes 450, 600, 900 and 1200. That check earned its place — 7 of 20 candidate substrings
   failed it, including `try and accept` and `hey there`, and `convert mario` is
   unique at 450/900/1200 but duplicated at 600 by the overlap segment. An
   ambiguous substring does not fail loudly; it makes its case pass for the wrong
@@ -170,10 +186,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **219 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **221 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **215 passed, 5
+  local-embedding tests skip instead of running, giving **217 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

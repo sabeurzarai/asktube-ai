@@ -36,7 +36,9 @@ off_topic           Nothing in the video answers it. Scored INVERTED: passing
 
 Prerequisites
 -------------
-1. Video fWjsdhR3z3c already ingested in the deployed vector store.
+1. EVERY video listed under "videos" in the fixture already ingested in the
+   deployed store. A missing one does not error - its cases simply return
+   nothing and read as retrieval failures, so check before blaming the code.
 2. DATABASE_URL set (the vector store backend reads it via settings).
 3. OPENAI_API_KEY set (embeddings always; chat too unless --frozen).
 
@@ -86,8 +88,9 @@ async def build_seeded_store(case: dict) -> tuple[InMemoryConversationStore, str
     return store, session_id
 
 
-async def run_case(case: dict, video_id: str, threshold: float, frozen: bool) -> dict:
+async def run_case(case: dict, frozen: bool) -> dict:
     vectorstore = get_vectorstore_service()
+    video_id = case["video_id"]
 
     if frozen:
         query = case["search_query"]
@@ -131,7 +134,7 @@ def print_row(row: dict) -> None:
     else:
         rank = row["rank"] if row["rank"] else "-"
         detail = f'rank={rank:<3} beste Distanz={row["best"]:.4f}' if row["best"] is not None else f"rank={rank}"
-    print(f'  {verdict}  {case["id"]:<22} {detail}')
+    print(f'  {verdict}  {case["id"]:<24} {case["video_id"][:6]}  {detail}')
     if row["query"] != case["question"]:
         print(f'{DIM}         gesucht mit: {row["query"]!r}{RESET}')
 
@@ -143,15 +146,17 @@ async def main() -> int:
     args = parser.parse_args()
 
     data = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
-    video_id = data["video_id"]
     cases = data["cases"]
-    threshold = data["off_topic_distance_threshold"]
 
     mode = "FROZEN (deterministisch, kein Chat-Aufruf)" if args.frozen else "LIVE (Rewrite wird ausgefuehrt)"
-    print(f"\n{'-' * 76}\n  AskTube AI - Retrieval Evaluation\n  Video : {video_id}\n"
+    print(f"\n{'-' * 76}\n  AskTube AI - Retrieval Evaluation\n"
           f"  Faelle: {len(cases)}   Modus: {mode}\n{'-' * 76}")
+    for video_id, meta in data["videos"].items():
+        count = sum(1 for c in cases if c["video_id"] == video_id)
+        print(f'  {video_id}  {count:>2} Faelle  {meta["title"][:48]}')
+    print("  Beide Videos muessen im eingesetzten Store ingestiert sein.")
 
-    rows = [await run_case(c, video_id, threshold, args.frozen) for c in cases]
+    rows = [await run_case(c, args.frozen) for c in cases]
 
     for kind in KIND_ORDER:
         group = [r for r in rows if r["case"]["kind"] == kind]

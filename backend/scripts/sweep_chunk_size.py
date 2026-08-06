@@ -3,44 +3,39 @@
 AskTube AI CHUNK_MAX_CHARS Sweep
 =================================
 
-Re-chunks one video at several CHUNK_MAX_CHARS values and scores each with the
-retrieval evaluation cases, so tuning the setting is measured rather than
+Re-chunks the evaluation videos at several CHUNK_MAX_CHARS values and scores the
+retrieval cases against each, so tuning the setting is measured rather than
 guessed. Companion to scripts/run_retrieval_eval.py, which measures the CURRENT
 setting against the deployed store.
 
-Three things make the comparison honest, and all three are easy to get wrong:
+Four things make the comparison honest, and all four are easy to get wrong:
 
-1. NOTHING IS WRITTEN TO THE DEPLOYED DATABASE. Each setting is loaded into a
-   fresh InMemoryVectorStore inside this process. Re-ingesting the video five
-   times into Postgres would mutate the live demo's data for the duration of
-   the sweep and leave whichever setting ran last in place.
+1. NOTHING IS WRITTEN TO THE DEPLOYED DATABASE. Each video at each setting is
+   loaded into a fresh InMemoryVectorStore inside this process. Re-ingesting
+   into Postgres would mutate the live demo's data for the duration of the
+   sweep and leave whichever setting ran last in place. Verified faithful: at
+   1200 this reproduced the pgvector numbers to within float noise.
 
-2. THE REWRITTEN QUERIES ARE COMPUTED ONCE AND REUSED. _contextualize calls a
-   chat model, which is not deterministic. Re-running it per setting would vary
-   the query and the chunk size together, and the result would not attribute to
-   either.
+2. THE QUERIES ARE THE FIXTURE'S FROZEN REWRITES, not live ones. The rewrite is
+   a chat call and is not deterministic. Two runs of this sweep with identical
+   transcripts and identical, deterministic chunking once disagreed by a whole
+   case for that reason alone. Frozen, consecutive runs are bit-identical.
 
-3. HIT RATE ALONE IS MISLEADING AT LARGE CHUNK SIZES. When a video yields
-   fewer than top_k chunks, the search returns the entire video and every case
-   "hits" for free. The chunk count is printed next to every row, and a setting
-   with chunk_count <= TOP_K is flagged DEGENERATE rather than reported as a
-   winner.
+3. HIT RATE ALONE IS MISLEADING AT LARGE CHUNK SIZES. When a video yields fewer
+   than top_k chunks, the search returns the entire video and every case "hits"
+   for free. Chunk counts are printed per video and a degenerate setting is
+   flagged rather than reported as a winner. Raw mean rank is not comparable
+   across settings either - rank 2 among 41 chunks is a far sharper result than
+   rank 2 among 7 - so a normalised rank is reported beside it.
 
-A fourth check runs per setting: each case's expect_chunk_containing substring
-must still appear in EXACTLY ONE chunk. The fixture picked substrings rather
-than chunk ids precisely so re-chunking would not break it - but a substring
-that lands in two chunks makes its case pass for the wrong reason, so ambiguity
-is reported instead of silently scored.
+4. TRANSCRIPTS COME FROM tests/fixtures, NOT FROM YOUTUBE. They are committed,
+   so a sweep is reproducible, needs no network, and cannot drift because a
+   caption track changed between runs.
 
-Prerequisites
--------------
-- OPENAI_API_KEY (embeddings for every chunk at every setting, plus one chat
-  call per follow-up case for the shared rewrite)
-- Network access to YouTube for the transcript. No DATABASE_URL is needed.
+Cost: embeddings for every chunk of every video at every setting. No chat calls.
 
-Run from the backend/ directory:
     cd backend && python scripts/sweep_chunk_size.py
-    cd backend && python scripts/sweep_chunk_size.py --sizes 400,800,1200
+    cd backend && python scripts/sweep_chunk_size.py --sizes 450,600,900
 """
 
 import argparse
@@ -52,35 +47,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
-from app.services.chunking_service import build_semantic_chunks
 from app.schemas.transcript import TranscriptResponse
-from app.services.transcript_service import TranscriptFetchOptions, get_transcript_service
+from app.services.chunking_service import build_semantic_chunks
 from app.services.vector_store.memory import InMemoryVectorStore
 from app.services.vectorstore_service import VectorStoreService
 
-FIXTURE_PATH = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "retrieval_eval_cases.json"
-DEFAULT_SIZES = [300, 450, 600, 900, 1200, 1600]
+FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
+FIXTURE_PATH = FIXTURES / "retrieval_eval_cases.json"
+DEFAULT_SIZES = [450, 600, 900, 1200]
 TOP_K = 5
 OVERLAP_SEGMENTS = 1
 
 GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
-
-
-def resolve_search_queries(cases: list[dict]) -> list[str]:
-    """Use the fixture's FROZEN queries.
-
-    Earlier this called _contextualize live, once per run. That was already
-    better than calling it per setting, but still not good enough: two runs of
-    this sweep with an identical transcript and identical, deterministic
-    chunking disagreed by a whole case, because the rewrite is a chat call. The
-    queries now come from the fixture, so chunk size is genuinely the only thing
-    that varies and the sweep costs no chat calls at all.
-
-    Re-record them with scripts/refresh_frozen_queries.py when the rewrite
-    prompt changes - and read the diff, because a bad rewrite frozen into the
-    fixture would silently become the thing every future comparison measures.
-    """
-    return [case["search_query"] for case in cases]
 
 
 def substring_occurrences(chunks, needle: str) -> int:
@@ -88,19 +66,23 @@ def substring_occurrences(chunks, needle: str) -> int:
     return sum(1 for c in chunks if lowered in c.text.lower())
 
 
-async def score_setting(transcript, cases, queries, max_chars: int) -> dict:
-    chunks = build_semantic_chunks(
-        transcript=transcript,
-        max_chunk_chars=max_chars,
-        overlap_segments=OVERLAP_SEGMENTS,
-    )
-    service = VectorStoreService(settings, InMemoryVectorStore())
-    await service.upsert_chunks(chunks)
+async def score_setting(transcripts: dict, cases: list[dict], max_chars: int) -> dict:
+    """Score every case at one chunk size, each against its own video's store."""
+    chunks_by_video, stores = {}, {}
+    for video_id, transcript in transcripts.items():
+        chunks = build_semantic_chunks(
+            transcript=transcript, max_chunk_chars=max_chars, overlap_segments=OVERLAP_SEGMENTS
+        )
+        chunks_by_video[video_id] = chunks
+        service = VectorStoreService(settings, InMemoryVectorStore())
+        await service.upsert_chunks(chunks)
+        stores[video_id] = service
 
     rows, hits = [], 0
-    for case, query in zip(cases, queries, strict=True):
-        results = await service.similarity_search(
-            query=query, limit=TOP_K, video_id=transcript.video_id
+    for case in cases:
+        video_id = case["video_id"]
+        results = await stores[video_id].similarity_search(
+            query=case["search_query"], limit=TOP_K, video_id=video_id
         )
         best = min((r.distance for r in results if r.distance is not None), default=None)
 
@@ -110,107 +92,94 @@ async def score_setting(transcript, cases, queries, max_chars: int) -> dict:
             # a spurious similarity - so they belong in the sweep, not beside it.
             passed = best is not None and best > case["expect_distance_above"]
             hits += bool(passed)
-            rows.append({"name": case["name"], "kind": case["kind"], "rank": None,
-                         "distance": best, "occurrences": 1, "passed": passed})
+            rows.append({"id": case["id"], "video_id": video_id, "kind": case["kind"],
+                         "rank": None, "distance": best, "occurrences": 1, "passed": passed})
             continue
 
         needle = case["expect_chunk_containing"]
         rank = next(
-            (i for i, r in enumerate(results, start=1) if needle.lower() in r.text.lower()),
-            None,
+            (i for i, r in enumerate(results, start=1) if needle.lower() in r.text.lower()), None
         )
         if rank:
             hits += 1
-        rows.append({"name": case["name"], "kind": case["kind"], "rank": rank,
-                     "distance": best, "occurrences": substring_occurrences(chunks, needle),
+        rows.append({"id": case["id"], "video_id": video_id, "kind": case["kind"], "rank": rank,
+                     "distance": best,
+                     "occurrences": substring_occurrences(chunks_by_video[video_id], needle),
                      "passed": rank is not None})
 
-    lengths = [len(c.text) for c in chunks]
-    return {
-        "max_chars": max_chars,
-        "chunk_count": len(chunks),
-        "mean_len": sum(lengths) // len(lengths) if lengths else 0,
-        "hits": hits,
-        "rows": rows,
-        "degenerate": len(chunks) <= TOP_K,
-    }
+    per_video = {}
+    for video_id, chunks in chunks_by_video.items():
+        lengths = [len(c.text) for c in chunks]
+        total = sum(len(s.text) for s in transcripts[video_id].segments)
+        mean_len = sum(lengths) // len(lengths) if lengths else 0
+        per_video[video_id] = {
+            "chunk_count": len(chunks),
+            "mean_len": mean_len,
+            "context_share": min(TOP_K, len(chunks)) * mean_len / total if total else 0,
+            "degenerate": len(chunks) <= TOP_K,
+        }
+
+    return {"max_chars": max_chars, "hits": hits, "rows": rows, "per_video": per_video}
 
 
 def print_setting(result: dict, total_cases: int) -> None:
-    flag = f"  {YELLOW}DEGENERATE - top_k={TOP_K} returns the whole video{RESET}" if result["degenerate"] else ""
-    print(f'\nCHUNK_MAX_CHARS={result["max_chars"]:<5} chunks={result["chunk_count"]:<3} '
-          f'mittlere Laenge={result["mean_len"]:<5} Treffer={result["hits"]}/{total_cases}{flag}')
+    parts = []
+    for video_id, v in result["per_video"].items():
+        flag = f" {YELLOW}DEGENERIERT{RESET}" if v["degenerate"] else ""
+        parts.append(f'{video_id}: {v["chunk_count"]} Chunks, Kontext {v["context_share"]:.0%}{flag}')
+    print(f'\nCHUNK_MAX_CHARS={result["max_chars"]:<5} bestanden={result["hits"]}/{total_cases}   '
+          + " | ".join(parts))
     for row in result["rows"]:
-        marker = "dist" if row["kind"] == "off_topic" else ("rank=" + str(row["rank"] or "-"))
-        verdict = f"{GREEN}PASS{RESET} {marker}" if row["passed"] else f"{RED}FAIL{RESET} {marker}"
+        if row["passed"]:
+            continue
+        marker = "Distanz" if row["kind"] == "off_topic" else f'rank={row["rank"] or "-"}'
         distance = f'{row["distance"]:.4f}' if row["distance"] is not None else "-"
-        warn = "" if row["occurrences"] == 1 else f'  {YELLOW}<- Substring in {row["occurrences"]} Chunks, nicht eindeutig{RESET}'
-        print(f'   {verdict}  dist={distance}  {row["name"][:46]}{warn}')
+        warn = "" if row["occurrences"] == 1 else f'  {YELLOW}Substring in {row["occurrences"]} Chunks{RESET}'
+        print(f'   {RED}FAIL{RESET} {row["id"]:<24} {marker:<9} dist={distance}{warn}')
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Compare CHUNK_MAX_CHARS values on the eval set.")
     parser.add_argument("--sizes", help="comma-separated CHUNK_MAX_CHARS values")
-    parser.add_argument("--refresh", action="store_true",
-                        help="re-fetch the transcript instead of using the cached copy")
     args = parser.parse_args()
     sizes = [int(s) for s in args.sizes.split(",")] if args.sizes else DEFAULT_SIZES
 
     data = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
-    video_id, cases = data["video_id"], data["cases"]
-
-    print(f"\n{'-' * 76}\n  CHUNK_MAX_CHARS Sweep - Video {video_id}, {len(cases)} Faelle, "
-          f"top_k={TOP_K}\n{'-' * 76}")
-
-    # Cached on disk: the sweep re-runs often while tuning, and YouTube starts
-    # refusing repeated transcript requests (502) well before the tuning is
-    # finished. Caching also makes a run reproducible - the same transcript in,
-    # the same numbers out - which a measurement tool needs.
-    cache = Path(__file__).resolve().parent.parent / "data" / f"transcript_{video_id}.json"
-    if cache.exists() and not args.refresh:
-        transcript = TranscriptResponse.model_validate_json(cache.read_text(encoding="utf-8"))
-        print(f"Transkript aus Cache: {cache}")
-    else:
-        transcript = await get_transcript_service().get_transcript(
-            video_id, TranscriptFetchOptions(language="en")
+    cases = data["cases"]
+    transcripts = {
+        video_id: TranscriptResponse.model_validate_json(
+            (FIXTURES / meta["transcript_fixture"]).read_text(encoding="utf-8")
         )
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(transcript.model_dump_json(), encoding="utf-8")
-        print(f"Transkript geholt und gecacht: {cache}")
+        for video_id, meta in data["videos"].items()
+    }
 
-    print(f"Transkript: {len(transcript.segments)} Segmente, "
-          f"{sum(len(s.text) for s in transcript.segments)} Zeichen")
+    print(f"\n{'-' * 78}\n  CHUNK_MAX_CHARS Sweep - {len(cases)} Faelle ueber "
+          f"{len(transcripts)} Videos, top_k={TOP_K}\n{'-' * 78}")
+    for video_id, transcript in transcripts.items():
+        chars = sum(len(s.text) for s in transcript.segments)
+        n = sum(1 for c in cases if c["video_id"] == video_id)
+        print(f'  {video_id}  {chars:>6} Zeichen  {n:>2} Faelle  {data["videos"][video_id]["title"][:44]}')
+    print("  Nur nicht bestandene Faelle werden einzeln aufgefuehrt.")
 
-    queries = resolve_search_queries(cases)
-    print("\nSuchanfragen (einmal berechnet, ueber alle Einstellungen konstant):")
-    for case, query in zip(cases, queries, strict=True):
-        marker = "=" if query == case["question"] else ">"
-        print(f'  {marker} {query!r}')
-
-    results = [await score_setting(transcript, cases, queries, size) for size in sizes]
+    results = [await score_setting(transcripts, cases, size) for size in sizes]
     for result in results:
         print_setting(result, len(cases))
 
-    total_chars = sum(len(s.text) for s in transcript.segments)
-    print(f"\n{'-' * 76}\n  Zusammenfassung\n{'-' * 76}")
-    print("  Der mittlere Rang ist NICHT ueber Einstellungen hinweg vergleichbar: bei 41")
-    print("  Chunks ist Rang 2 eine viel schaerfere Leistung als bei 7. Normiert = Rang")
-    print("  geteilt durch Chunk-Anzahl; kleiner ist besser. 'Kontext' ist der Anteil des")
-    print("  Videos, den top_k Chunks an das Modell weiterreichen - der eigentliche Preis")
-    print("  grober Chunks, unabhaengig vom Fallset messbar.\n")
-    print(f'  {"max_chars":<11}{"chunks":<9}{"Treffer":<10}{"Rang":<8}{"normiert":<11}{"Kontext":<10}Hinweis')
+    print(f"\n{'-' * 78}\n  Zusammenfassung\n{'-' * 78}")
+    print("  Normierter Rang = mittlerer Rang / Chunk-Anzahl; kleiner ist besser. Roher Rang")
+    print("  ist NICHT ueber Einstellungen vergleichbar. 'Kontext' ist der Anteil eines Videos,")
+    print("  den top_k Chunks an das Modell weiterreichen - der Preis grober Chunks, unabhaengig")
+    print("  vom Fallset messbar.\n")
+    header = f'  {"max_chars":<11}{"bestanden":<12}{"Rang":<8}{"normiert":<11}Kontext je Video'
+    print(header)
     for r in results:
         ranks = [row["rank"] for row in r["rows"] if row["rank"]]
         mean_rank = sum(ranks) / len(ranks) if ranks else None
-        rank_display = f"{mean_rank:.2f}" if mean_rank else "-"
-        normalized = f"{mean_rank / r['chunk_count']:.3f}" if mean_rank else "-"
-        context_share = f"{min(TOP_K, r['chunk_count']) * r['mean_len'] / total_chars:.0%}"
-        note = "DEGENERIERT" if r["degenerate"] else ""
-        ambiguous = sum(1 for row in r["rows"] if row["occurrences"] != 1)
-        if ambiguous:
-            note = (note + " " if note else "") + f"{ambiguous} Substring(s) mehrdeutig"
-        print(f'  {r["max_chars"]:<11}{r["chunk_count"]:<9}{r["hits"]}/{len(cases):<8}'
-              f'{rank_display:<8}{normalized:<11}{context_share:<10}{note}')
+        mean_chunks = sum(v["chunk_count"] for v in r["per_video"].values()) / len(r["per_video"])
+        normalized = f"{mean_rank / mean_chunks:.3f}" if mean_rank else "-"
+        shares = "  ".join(f'{vid[:6]}={v["context_share"]:.0%}' for vid, v in r["per_video"].items())
+        print(f'  {r["max_chars"]:<11}{f"{r["hits"]}/{len(cases)}":<12}'
+              f'{f"{mean_rank:.2f}" if mean_rank else "-":<8}{normalized:<11}{shares}')
     print()
     return 0
 

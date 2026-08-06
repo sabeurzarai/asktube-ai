@@ -35,18 +35,25 @@ def fixture_data() -> dict:
 
 
 @pytest.fixture(scope="module")
-def transcript(fixture_data) -> TranscriptResponse:  # noqa: ANN001
-    path = FIXTURES / fixture_data["transcript_fixture"]
-    return TranscriptResponse.model_validate_json(path.read_text(encoding="utf-8"))
+def transcripts(fixture_data) -> dict:  # noqa: ANN001
+    return {
+        video_id: TranscriptResponse.model_validate_json(
+            (FIXTURES / meta["transcript_fixture"]).read_text(encoding="utf-8")
+        )
+        for video_id, meta in fixture_data["videos"].items()
+    }
 
 
 @pytest.fixture(scope="module")
-def chunks_by_size(transcript) -> dict:  # noqa: ANN001
+def chunks_by_video_and_size(transcripts) -> dict:  # noqa: ANN001
     return {
-        size: build_semantic_chunks(
-            transcript=transcript, max_chunk_chars=size, overlap_segments=OVERLAP_SEGMENTS
-        )
-        for size in CHUNK_SIZES
+        video_id: {
+            size: build_semantic_chunks(
+                transcript=transcript, max_chunk_chars=size, overlap_segments=OVERLAP_SEGMENTS
+            )
+            for size in CHUNK_SIZES
+        }
+        for video_id, transcript in transcripts.items()
     }
 
 
@@ -60,10 +67,13 @@ def test_every_case_has_a_unique_id(fixture_data) -> None:  # noqa: ANN001
 
 
 @pytest.mark.parametrize("size", CHUNK_SIZES)
-def test_expected_substrings_identify_exactly_one_chunk(fixture_data, chunks_by_size, size) -> None:  # noqa: ANN001
-    chunks = chunks_by_size[size]
+def test_expected_substrings_identify_exactly_one_chunk(fixture_data, chunks_by_video_and_size, size) -> None:  # noqa: ANN001
     ambiguous = {}
     for case in content_cases(fixture_data):
+        # Checked against the case's OWN video. A substring only has to be
+        # unique there - the search is scoped by video_id, so a collision across
+        # videos cannot make a case pass for the wrong reason.
+        chunks = chunks_by_video_and_size[case["video_id"]][size]
         needle = case["expect_chunk_containing"].lower()
         count = sum(1 for chunk in chunks if needle in chunk.text.lower())
         if count != 1:
@@ -113,6 +123,22 @@ def test_every_case_documents_what_it_guards(fixture_data) -> None:  # noqa: ANN
     # fails inconveniently.
     for case in fixture_data["cases"]:
         assert case.get("guards", "").strip(), case["id"]
+
+
+def test_every_case_names_a_video_the_fixture_declares(fixture_data) -> None:  # noqa: ANN001
+    declared = set(fixture_data["videos"])
+    for case in fixture_data["cases"]:
+        assert case["video_id"] in declared, case["id"]
+
+
+def test_both_videos_carry_cases(fixture_data) -> None:  # noqa: ANN001
+    # A second video that only appears in the header would give false confidence
+    # that conclusions generalise beyond the first one.
+    used = {c["video_id"] for c in fixture_data["cases"]}
+    assert used == set(fixture_data["videos"])
+    for video_id in used:
+        kinds = {c["kind"] for c in fixture_data["cases"] if c["video_id"] == video_id}
+        assert len(kinds) >= 4, f"{video_id} exercises too few case kinds: {kinds}"
 
 
 def test_the_set_covers_every_kind(fixture_data) -> None:  # noqa: ANN001
