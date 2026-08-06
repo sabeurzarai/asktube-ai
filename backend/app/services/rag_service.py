@@ -44,6 +44,23 @@ RAG_PROMPT = ChatPromptTemplate.from_messages(
 )
 
 
+CONTEXTUALIZE_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            (
+                "Rewrite the user's latest question into a standalone search query for a "
+                "video transcript, resolving pronouns and references using the conversation. "
+                "Use ONLY information present in the conversation - never invent topics, "
+                "names or details that were not mentioned. If the question is already "
+                "self-contained, return it unchanged. Reply with the query and nothing else."
+            ),
+        ),
+        ("human", "Conversation:\n{history}\n\nLatest question:\n{question}"),
+    ]
+)
+
+
 class RAGService:
     def __init__(
         self,
@@ -91,6 +108,47 @@ class RAGService:
                 session_id,
                 exc_info=True,
             )
+
+    async def _contextualize(self, message: str, history: list[ChatMessage]) -> str:
+        """Rewrite a follow-up into a standalone search query.
+
+        A question like "and what did you just say it uses?" carries no
+        information about the video, so embedding it verbatim points at generic
+        conversational language and the nearest neighbours are effectively
+        arbitrary. Resolving it against the history first is what makes the
+        search find what the user actually means.
+
+        Returns `message` unchanged when there is no history to resolve against,
+        and falls back to it if the rewrite fails or comes back empty: retrieval
+        quality is an enhancement, and it must never prevent an answer.
+        """
+        if not history:
+            return message
+
+        try:
+            chain = CONTEXTUALIZE_PROMPT | self.create_chat_model(streaming=False)
+            response = await chain.ainvoke(
+                {"history": format_memory(history), "question": message},
+                config={"run_name": "contextualize_query", "tags": ["rag", "query-rewrite"]},
+            )
+            rewritten = str(response.content).strip()
+        except Exception as exc:  # noqa: BLE001 - deliberately broad: the call goes to a
+            # third-party provider through LangChain and can raise almost anything
+            # (timeouts, rate limits, provider-specific errors, parsing failures). The
+            # fallback is the exact behaviour that existed before this method, so no
+            # failure mode is made worse by catching broadly, and every catch is logged.
+            logger.warning(
+                "Query contextualization failed; searching with the raw message instead: %s",
+                exc,
+            )
+            return message
+
+        if not rewritten:
+            logger.warning("Query contextualization returned empty text; using the raw message.")
+            return message
+
+        logger.info("Contextualized query: %r -> %r", message, rewritten)
+        return rewritten
 
     @traceable(name="rag_answer", run_type="chain", project_name=settings.langsmith_project)
     async def answer(

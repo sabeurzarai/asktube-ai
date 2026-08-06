@@ -80,11 +80,11 @@ class FailingConversationStore:
         raise OSError("connection refused")
 
 
-def make_rag_service(memory) -> RAGService:  # noqa: ANN001
+def make_rag_service(memory=None) -> RAGService:  # noqa: ANN001
     return RAGService(
         config=settings,
         vectorstore=FakeVectorStoreService(),
-        memory=memory,
+        memory=memory if memory is not None else InMemoryConversationStore(),
     )
 
 
@@ -141,3 +141,80 @@ async def test_stream_answer_survives_a_conversation_store_that_is_down(monkeypa
     assert done_event.type == "done"
     assert done_event.answer
     assert done_event.memory == []
+
+
+# ---------------------------------------------------------------------------
+# Query contextualization: rewriting a follow-up into a standalone search query
+# ---------------------------------------------------------------------------
+
+
+class FailingChatModel(FakeListChatModel):
+    """A chat model whose provider is unreachable."""
+
+    def _call(self, messages, stop=None, run_manager=None, **kwargs):  # noqa: ANN001
+        raise RuntimeError("provider is unavailable")
+
+
+def some_history() -> list[ChatMessage]:
+    return [
+        ChatMessage(role="user", content="What is this video about?"),
+        ChatMessage(role="assistant", content="Getting started with Python."),
+    ]
+
+
+async def test_contextualize_returns_the_message_unchanged_without_history() -> None:
+    # First turns must cost nothing extra and must not be degraded by a rewrite.
+    service = make_rag_service()
+
+    assert await service._contextualize("How do I do addition?", []) == "How do I do addition?"
+
+
+async def test_contextualize_makes_no_model_call_without_history(monkeypatch) -> None:  # noqa: ANN001
+    # Counted rather than asserted inside the fake on purpose: _contextualize catches
+    # broadly, so an AssertionError raised in there would be swallowed and this test
+    # would pass without proving anything.
+    calls = {"count": 0}
+
+    def counting_model(streaming):  # noqa: ANN001
+        calls["count"] += 1
+        return FakeListChatModel(responses=["unused"])
+
+    service = make_rag_service()
+    monkeypatch.setattr(service, "create_chat_model", counting_model)
+
+    await service._contextualize("How do I do addition?", [])
+
+    assert calls["count"] == 0
+
+
+async def test_contextualize_rewrites_using_history(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    monkeypatch.setattr(
+        service,
+        "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["which code editor does the tutorial use"]),
+    )
+
+    rewritten = await service._contextualize("And what does it use?", some_history())
+
+    assert rewritten == "which code editor does the tutorial use"
+
+
+async def test_contextualize_falls_back_to_the_original_when_the_model_fails(monkeypatch) -> None:  # noqa: ANN001
+    # An enhancement must not be able to prevent an answer: a failed rewrite degrades
+    # retrieval to exactly today's behaviour rather than raising.
+    service = make_rag_service()
+    monkeypatch.setattr(
+        service, "create_chat_model", lambda streaming: FailingChatModel(responses=["unused"])
+    )
+
+    assert await service._contextualize("and the next one?", some_history()) == "and the next one?"
+
+
+async def test_contextualize_falls_back_when_the_model_returns_blank(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    monkeypatch.setattr(
+        service, "create_chat_model", lambda streaming: FakeListChatModel(responses=["   "])
+    )
+
+    assert await service._contextualize("and the next one?", some_history()) == "and the next one?"
