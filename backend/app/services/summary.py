@@ -9,13 +9,17 @@ segments 10-20 and chunk N+1 covers 20-30, segment 20's words are inside both
 strings and cannot be removed without the original segments. rebuild_transcript
 therefore drops only chunks whose segments are ENTIRELY already seen, and the
 one-segment boundary overlap remains: a few repeated words per boundary.
-Measured against both committed transcript fixtures at the current
-CHUNK_MAX_CHARS (600), that overlap is 9.1% of the text for fWjsdhR3z3c and
-13.4% for sQK3Yr4Sc_k - not the ~2% an earlier, larger chunk size gave, since
-a smaller chunk size means more boundaries and the overlap scales inversely
-with CHUNK_MAX_CHARS. Still immaterial to a summary: it is repeated words at
-segment boundaries, not repeated ideas. The design spec claims full dedup; it
-is wrong, and this is the correction.
+
+How much: summing the length of every segment that appears in more than one
+chunk, over the length of the rebuilt transcript, gives 5.2% for fWjsdhR3z3c
+and 10.4% for sQK3Yr4Sc_k at the current CHUNK_MAX_CHARS of 600 - and 2.7% /
+5.5% at 1200, because halving the chunk size doubles the number of boundaries.
+The method is stated because the figure is not reproducible without it: an
+earlier review reported 9.1% / 13.4% by some other measure, and that number
+should not be trusted over this one. Still immaterial to a summary either way:
+it is repeated words at segment boundaries, not repeated ideas.
+
+The design spec claims full dedup; it is wrong, and this is the correction.
 """
 
 import logging
