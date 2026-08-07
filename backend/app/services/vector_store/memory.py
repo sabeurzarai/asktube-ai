@@ -46,7 +46,11 @@ class InMemoryVectorStore:
         # segment_indices and metadata are a list and a dict, so a shallow copy
         # would still let a caller mutate the store's internals in place.
         # Clearing the embedding matches pgvector, which never selects that
-        # column - the contract is that both backends return the same thing.
+        # column - the contract is that both backends return the same thing
+        # for the embedding. It does NOT hold for `metadata`: pgvector
+        # reconstructs that dict from exactly two columns (source, language),
+        # while this store hands back whatever dict was originally written -
+        # a caller must not rely on metadata surviving a round trip unchanged.
         return [
             chunk.model_copy(update={"embedding": None}, deep=True)
             for chunk in sorted(self._by_video.get(video_id, []), key=lambda item: item.index)
