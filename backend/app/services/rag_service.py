@@ -161,7 +161,7 @@ class RAGService:
         self,
         message: str,
         video_id: str,
-    ) -> tuple[str, list[TimestampCitation], int] | None:
+    ) -> tuple[str, list[TimestampCitation], int, float] | None:
         """Summarise a whole video, or return None to fall through to retrieval.
 
         None is not an error signal - it means "this path cannot help here", and
@@ -169,13 +169,17 @@ class RAGService:
         summarisation path is an enhancement, so it degrades rather than failing,
         the same way conversation memory and the query rewrite do.
 
-        Returns a 3-tuple of the answer text, the timestamp citations extracted
-        from it, and the character length of the rebuilt transcript that was
-        sent to the model. That third item is not cosmetic: the summary path
-        sends up to `SUMMARY_MAX_CHARS` of transcript in a single call while the
-        response's `retrieved_context` stays empty on purpose (see `answer`), so
-        callers need it to record the true cost of the call rather than
-        recording it as free.
+        Returns a 4-tuple of the answer text, the timestamp citations extracted
+        from it, the character length of the rebuilt transcript that was sent to
+        the model, and the milliseconds spent in `list_video_chunks`. The third
+        item is not cosmetic: the summary path sends up to `SUMMARY_MAX_CHARS`
+        of transcript in a single call while the response's `retrieved_context`
+        stays empty on purpose (see `answer`), so callers need it to record the
+        true cost of the call rather than recording it as free. The fourth item
+        exists for the same reason: `list_video_chunks` is a full per-video table
+        read, not free either, and folding its cost into generation_ms would
+        report `retrieval_ms=0` for every summary answer and drag
+        `avg_retrieval_latency` in analytics toward zero.
         """
         # Imported here, not at module scope: summary.py imports format_timestamp
         # from this module, so a top-level import would be circular.
@@ -186,6 +190,7 @@ class RAGService:
             rebuild_transcript,
         )
 
+        chunk_read_start = time.perf_counter()
         try:
             chunks = await self.vectorstore.list_video_chunks(video_id)
         except (OSError, ConnectionError):
@@ -195,6 +200,7 @@ class RAGService:
                 exc_info=True,
             )
             return None
+        retrieval_ms = (time.perf_counter() - chunk_read_start) * 1000
 
         if not chunks:
             logger.info("No chunks stored for %s; not summarising.", video_id)
@@ -229,7 +235,7 @@ class RAGService:
             return None
 
         citations = citations_for_timestamps(extract_timestamps(answer), chunks)
-        return answer, citations, len(transcript)
+        return answer, citations, len(transcript), retrieval_ms
 
     @traceable(name="rag_answer", run_type="chain", project_name=settings.langsmith_project)
     async def answer(
@@ -251,18 +257,24 @@ class RAGService:
         if is_broad_question(message) and video_id is not None:
             summary = await self.summarize_video(message=message, video_id=video_id)
             if summary is not None:
-                summary_answer, summary_citations, transcript_chars = summary
+                summary_answer, summary_citations, transcript_chars, summary_retrieval_ms = summary
                 active_session_id = session_id or self.memory.create_session_id()
                 await self._append_exchange(active_session_id, message, summary_answer)
                 messages = await self._get_history(active_session_id)
+                # generation_ms is the elapsed time MINUS the chunk read
+                # summarize_video already timed, so the two do not double-count
+                # the same wall-clock time under different labels.
+                summary_generation_ms = max(
+                    0.0, (time.perf_counter() - answer_start) * 1000 - summary_retrieval_ms
+                )
                 await self._record_rag_metrics(
                     message=message,
                     session_id=active_session_id,
                     retrieved_context=[],
                     citations=summary_citations,
                     answer=summary_answer,
-                    retrieval_ms=0,
-                    generation_ms=(time.perf_counter() - answer_start) * 1000,
+                    retrieval_ms=summary_retrieval_ms,
+                    generation_ms=summary_generation_ms,
                     started_at=answer_start,
                     messages=messages,
                     context_chars=transcript_chars,
@@ -363,10 +375,16 @@ class RAGService:
     ) -> AsyncIterator[RAGStreamEvent]:
         answer_start = time.perf_counter()
 
+        # Checked before the summary branch, not only inside prepare_context: without
+        # it, a missing API key would do a full chunk read and a doomed model call
+        # before failing, and log a misleading "Summarisation failed" warning along
+        # the way. Mirrors the same check in `answer` - streaming must not skip it.
+        require_chat_credentials(self.config)
+
         if is_broad_question(message) and video_id is not None:
             summary = await self.summarize_video(message=message, video_id=video_id)
             if summary is not None:
-                summary_answer, summary_citations, transcript_chars = summary
+                summary_answer, summary_citations, transcript_chars, summary_retrieval_ms = summary
                 active_session_id = session_id or self.memory.create_session_id()
                 history = await self._get_history(active_session_id)
                 yield RAGStreamEvent(
@@ -381,14 +399,20 @@ class RAGService:
                 )
                 await self._append_exchange(active_session_id, message, summary_answer)
                 messages = await self._get_history(active_session_id)
+                # generation_ms is the elapsed time MINUS the chunk read
+                # summarize_video already timed, so the two do not double-count
+                # the same wall-clock time under different labels.
+                summary_generation_ms = max(
+                    0.0, (time.perf_counter() - answer_start) * 1000 - summary_retrieval_ms
+                )
                 await self._record_rag_metrics(
                     message=message,
                     session_id=active_session_id,
                     retrieved_context=[],
                     citations=summary_citations,
                     answer=summary_answer,
-                    retrieval_ms=0,
-                    generation_ms=(time.perf_counter() - answer_start) * 1000,
+                    retrieval_ms=summary_retrieval_ms,
+                    generation_ms=summary_generation_ms,
                     started_at=answer_start,
                     messages=messages,
                     context_chars=transcript_chars,
@@ -563,7 +587,8 @@ class RAGService:
             # not be confused with the `* 4 // 3` used elsewhere in this
             # method, which is a WORDS-to-tokens ratio applied to
             # `len(text.split())` - mixing the two overestimates tokens by
-            # roughly 5.7x.
+            # roughly 5.3x: applying `* 4 // 3` to a CHARACTER count instead of
+            # `// 4` scales it by (4/3) / (1/4) = 16/3 ≈ 5.3x, not 5.7x.
             context_tokens = max(1, context_chars // 4)
         else:
             context_tokens = sum(

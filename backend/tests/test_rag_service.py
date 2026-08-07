@@ -1,3 +1,5 @@
+import asyncio
+
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from app.analytics.schemas import ChatMetricCreate, RAGMetricCreate
@@ -5,7 +7,14 @@ from app.core.config import settings
 from app.schemas.rag import ChatMessage
 from app.schemas.vectorstore import VectorSearchResult
 from app.services.conversation_store import InMemoryConversationStore
-from app.services.rag_service import RAGService, build_citations, format_context, format_memory, format_timestamp
+from app.services.rag_service import (
+    SUMMARY_MAX_CHARS,
+    RAGService,
+    build_citations,
+    format_context,
+    format_memory,
+    format_timestamp,
+)
 
 
 def make_result(chunk_id: str = "video123:0:test") -> VectorSearchResult:
@@ -448,16 +457,30 @@ async def test_summary_falls_back_when_the_video_has_no_chunks(monkeypatch) -> N
     assert response.answer
 
 
-async def test_summary_falls_back_when_the_transcript_is_too_long(monkeypatch) -> None:  # noqa: ANN001
+def _chunk_for_transcript_length(target_length: int):
+    """Build one chunk whose `rebuild_transcript([...])` output is exactly `target_length` chars.
+
+    Derives the "[MM:SS] " prefix length from format_timestamp itself rather
+    than hardcoding it, so a change to the timestamp format cannot silently
+    desync these boundary tests the way a hardcoded prefix length would.
+    """
     from app.schemas.chunks import TranscriptChunk
 
-    huge = [
-        TranscriptChunk(
-            chunk_id="vid1-0", index=0, video_id="vid1", text="x" * 41_000,
-            start_seconds=0.0, end_seconds=60.0, segment_indices=[0],
-            token_estimate=5, metadata={"source": "captions", "language": "en"},
-        )
-    ]
+    prefix_length = len(f"[{format_timestamp(0.0)}] ")
+    return TranscriptChunk(
+        chunk_id="vid1-0", index=0, video_id="vid1", text="x" * (target_length - prefix_length),
+        start_seconds=0.0, end_seconds=60.0, segment_indices=[0],
+        token_estimate=5, metadata={"source": "captions", "language": "en"},
+    )
+
+
+async def test_summary_falls_back_when_the_transcript_is_just_over_the_limit(monkeypatch) -> None:  # noqa: ANN001
+    # Boundary probe for summarize_video's `>` check: one character over
+    # SUMMARY_MAX_CHARS, paired with the exactly-at-the-limit case below, is
+    # what actually distinguishes `>` from a `>=` mix-up. A transcript that is
+    # merely "much too long" (as a comfortably-over case would be) cannot -
+    # both operators reject it identically.
+    huge = [_chunk_for_transcript_length(SUMMARY_MAX_CHARS + 1)]
     service = make_rag_service()
     service.vectorstore = ChunkListingVectorStoreService(huge)
     monkeypatch.setattr(
@@ -469,7 +492,31 @@ async def test_summary_falls_back_when_the_transcript_is_too_long(monkeypatch) -
         message="What is this video about?", video_id="vid1", session_id=None, top_k=5
     )
 
+    # The retrieval path ran instead of the summary - proven by the search
+    # having happened.
     assert service.vectorstore.last_query == "What is this video about?"
+
+
+async def test_summary_runs_when_the_transcript_is_exactly_at_the_limit(monkeypatch) -> None:  # noqa: ANN001
+    # The other half of the boundary: exactly SUMMARY_MAX_CHARS must still be
+    # summarised, not rejected. A `>=` mix-up would make this fall back to
+    # retrieval instead, which the assertions below catch.
+    exact = [_chunk_for_transcript_length(SUMMARY_MAX_CHARS)]
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(exact)
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["a grounded answer"]),
+    )
+
+    response = await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    # The summary path ran - no search happened, and the answer is the raw
+    # model output rather than the retrieval-path's synthesized text.
+    assert service.vectorstore.last_query is None
+    assert response.answer == "a grounded answer"
 
 
 async def test_broad_question_without_a_video_takes_the_retrieval_path(monkeypatch) -> None:  # noqa: ANN001
@@ -626,6 +673,49 @@ async def test_summary_metrics_zero_coverage_without_valid_timestamps(monkeypatc
     assert metric.chunks_retrieved == 0
 
 
+class SlowChunkListingVectorStoreService(ChunkListingVectorStoreService):
+    """Adds a measurable delay to list_video_chunks.
+
+    Without it, retrieval_ms could come back as a genuinely-tiny-but-nonzero
+    float purely from perf_counter noise even with the old `retrieval_ms=0`
+    bug, making a bare `> 0` assertion unreliable. Sleeping first makes the
+    measured value large enough to be an unambiguous regression guard.
+    """
+
+    async def list_video_chunks(self, video_id):  # noqa: ANN001
+        await asyncio.sleep(0.02)
+        return await super().list_video_chunks(video_id)
+
+
+async def test_summary_records_real_retrieval_latency_not_zero(monkeypatch) -> None:  # noqa: ANN001
+    # Regression guard: the summary path used to pass retrieval_ms=0 to
+    # _record_rag_metrics, which was untrue - list_video_chunks is a full
+    # per-video table read - and skewed analytics' avg_retrieval_latency
+    # toward zero on every summary click (the frontend's first suggested
+    # prompt). generation_latency must not double-count that same read.
+    service = make_rag_service()
+    service.vectorstore = SlowChunkListingVectorStoreService(make_video_chunks())
+    recorder = RecordingAnalyticsService()
+    monkeypatch.setattr("app.services.rag_service.get_analytics_service", lambda: recorder)
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["Overview. [00:00] the start."]),
+    )
+
+    await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert len(recorder.rag_metrics) == 1
+    metric = recorder.rag_metrics[0]
+    # Threshold set well below the 0.02s (20ms) sleep, not at it: Windows'
+    # asyncio.sleep can return a few ms early, so asserting close to the full
+    # sleep duration is flaky. 10ms is still unambiguously distinguishable
+    # from the old bug's hardcoded 0.
+    assert metric.retrieval_latency >= 10.0
+    assert metric.generation_latency >= 0.0
+
+
 async def test_retrieval_metrics_context_tokens_unchanged_without_context_chars(monkeypatch) -> None:  # noqa: ANN001
     # The regression guard for the whole context_chars addition: when it is None
     # (the retrieval path), context_tokens must still come from retrieved_context
@@ -681,6 +771,14 @@ async def test_stream_answer_emits_a_summary_as_one_token_event(monkeypatch) -> 
 
 
 async def test_stream_answer_falls_back_to_retrieval_when_summarising_fails(monkeypatch) -> None:  # noqa: ANN001
+    # FailingChatModel only overrides `_call`, the sync entry point LangChain's
+    # `ainvoke` routes through by default. It does NOT override `_astream`, so
+    # the inherited FakeListChatModel implementation is what the fallback's
+    # `chain.astream(...)` actually runs, and it succeeds. That means this test
+    # proves the search ran (via `last_query` below) - i.e. that the fallback
+    # path was taken - not that generation itself failed; a model that failed
+    # identically on both `ainvoke` and `astream` would make this test pass for
+    # the wrong reason (or not at all, if both raised).
     service = make_rag_service()
     service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
     monkeypatch.setattr(
