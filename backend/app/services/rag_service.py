@@ -517,7 +517,13 @@ class RAGService:
         total_ms = (time.perf_counter() - started_at) * 1000
         RAG_LATENCY.observe(total_ms / 1000)
         if context_chars is not None:
-            context_tokens = max(1, context_chars * 4 // 3)
+            # `context_chars` is a CHARACTER count (len(transcript)), so the
+            # characters-to-tokens ratio is `// 4` (~4 chars/token). This must
+            # not be confused with the `* 4 // 3` used elsewhere in this
+            # method, which is a WORDS-to-tokens ratio applied to
+            # `len(text.split())` - mixing the two overestimates tokens by
+            # roughly 5.7x.
+            context_tokens = max(1, context_chars // 4)
         else:
             context_tokens = sum(
                 int(result.metadata.get("token_estimate", 0) or 0) for result in retrieved_context

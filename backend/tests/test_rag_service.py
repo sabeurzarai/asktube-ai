@@ -1,5 +1,6 @@
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
+from app.analytics.schemas import ChatMetricCreate, RAGMetricCreate
 from app.core.config import settings
 from app.schemas.rag import ChatMessage
 from app.schemas.vectorstore import VectorSearchResult
@@ -537,3 +538,113 @@ async def test_narrow_question_makes_exactly_one_model_call(monkeypatch) -> None
     )
 
     assert calls["count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# _record_rag_metrics: what actually gets sent to analytics
+# ---------------------------------------------------------------------------
+
+
+class RecordingAnalyticsService:
+    """Captures every RAGMetricCreate/ChatMetricCreate instead of writing to a database.
+
+    `safe_track` on the real AnalyticsService silently drops the awaitable when
+    analytics is disabled (as it is in tests), so a double that stands in for
+    `get_analytics_service()` itself - rather than trying to flip that setting -
+    is the least invasive way to see what `_record_rag_metrics` actually built.
+    """
+
+    def __init__(self) -> None:
+        self.rag_metrics: list[RAGMetricCreate] = []
+        self.chat_metrics: list[ChatMetricCreate] = []
+
+    async def track_rag_metric(self, metric: RAGMetricCreate) -> None:
+        self.rag_metrics.append(metric)
+
+    async def track_chat_metric(self, metric: ChatMetricCreate) -> None:
+        self.chat_metrics.append(metric)
+
+    async def safe_track(self, awaitable) -> None:  # noqa: ANN001
+        await awaitable
+
+
+async def test_summary_metrics_use_the_characters_to_tokens_ratio(monkeypatch) -> None:  # noqa: ANN001
+    # The regression guard for the unit mix-up: context_chars is a character count,
+    # so the token estimate must come from `// 4`, not the words-to-tokens `* 4 // 3`
+    # used elsewhere in this file. Derived from the actual rebuilt transcript rather
+    # than hardcoded, so a change to make_video_chunks() cannot silently desync it.
+    from app.services.summary import rebuild_transcript
+
+    chunks = make_video_chunks()
+    transcript = rebuild_transcript(chunks)
+    expected_tokens = max(1, len(transcript) // 4)
+    wrong_tokens = max(1, len(transcript) * 4 // 3)
+    assert expected_tokens != wrong_tokens  # otherwise this test could not tell them apart
+
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(chunks)
+    recorder = RecordingAnalyticsService()
+    monkeypatch.setattr("app.services.rag_service.get_analytics_service", lambda: recorder)
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(
+            responses=["Overview. [00:00] the start. [02:30] the end."]
+        ),
+    )
+
+    await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert len(recorder.rag_metrics) == 1
+    metric = recorder.rag_metrics[0]
+    assert metric.context_tokens == expected_tokens
+    assert metric.context_tokens != wrong_tokens
+    # Citations were produced (both timestamps landed in a chunk), so coverage is full.
+    assert metric.citation_coverage == 100.0
+    # retrieved_context is deliberately empty on the summary path - see `answer`.
+    assert metric.chunks_retrieved == 0
+
+
+async def test_summary_metrics_zero_coverage_without_valid_timestamps(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    recorder = RecordingAnalyticsService()
+    monkeypatch.setattr("app.services.rag_service.get_analytics_service", lambda: recorder)
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["An overview with no timestamps at all."]),
+    )
+
+    await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert len(recorder.rag_metrics) == 1
+    metric = recorder.rag_metrics[0]
+    assert metric.citation_coverage == 0.0
+    assert metric.chunks_retrieved == 0
+
+
+async def test_retrieval_metrics_context_tokens_unchanged_without_context_chars(monkeypatch) -> None:  # noqa: ANN001
+    # The regression guard for the whole context_chars addition: when it is None
+    # (the retrieval path), context_tokens must still come from retrieved_context
+    # exactly as it did before context_chars existed.
+    service = make_rag_service()
+    recorder = RecordingAnalyticsService()
+    monkeypatch.setattr("app.services.rag_service.get_analytics_service", lambda: recorder)
+    monkeypatch.setattr(
+        service, "create_chat_model", lambda streaming: FakeListChatModel(responses=["a grounded answer"])
+    )
+
+    await service.answer(
+        message="How do I do addition in Python?", video_id="vid1", session_id=None, top_k=3
+    )
+
+    assert len(recorder.rag_metrics) == 1
+    metric = recorder.rag_metrics[0]
+    result = make_result()
+    # FakeVectorStoreService returns one make_result(), whose metadata has no
+    # "token_estimate", so this falls back to the words-to-tokens estimate.
+    expected_tokens = max(1, len(result.text.split()) * 4 // 3)
+    assert metric.context_tokens == expected_tokens
