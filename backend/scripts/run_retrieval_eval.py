@@ -130,7 +130,12 @@ def print_row(row: dict) -> None:
     case = row["case"]
     verdict = f"{GREEN}PASS{RESET}" if row["passed"] else f"{RED}FAIL{RESET}"
     if case["kind"] == "off_topic":
-        detail = f'beste Distanz={row["best"]:.4f} (muss >{case["expect_distance_above"]})'
+        # A missing video does not error - its cases read as a retrieval
+        # failure with best=None (see AGENTS.md) - so this must be guarded
+        # the same way the content-case branch below already is, or a missing
+        # video crashes here instead of printing a FAIL row.
+        best_display = f'{row["best"]:.4f}' if row["best"] is not None else "-"
+        detail = f'beste Distanz={best_display} (muss >{case["expect_distance_above"]})'
     else:
         rank = row["rank"] if row["rank"] else "-"
         detail = f'rank={rank:<3} beste Distanz={row["best"]:.4f}' if row["best"] is not None else f"rank={rank}"
