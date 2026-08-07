@@ -150,3 +150,22 @@ def test_the_set_covers_every_kind(fixture_data) -> None:  # noqa: ANN001
         "topic_shift",
         "off_topic",
     }
+
+
+def test_no_content_case_is_classified_as_broad(fixture_data) -> None:  # noqa: ANN001
+    """The regression guard for the summarisation path's one real risk.
+
+    These 26 questions were written to exercise retrieval, which makes them
+    exactly the corpus needed here: real questions, two videos, five kinds. If
+    the heuristic ever starts matching one, an ordinary question is being sent
+    down the summary path.
+    """
+    from app.services.question_kind import is_broad_question
+
+    misrouted = [
+        c["id"] for c in fixture_data["cases"]
+        if c["kind"] != "off_topic" and is_broad_question(c["question"])
+    ]
+    assert not misrouted, (
+        f"these retrieval cases would be routed to the summarisation path: {misrouted}"
+    )
