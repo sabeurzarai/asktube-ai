@@ -1,6 +1,14 @@
 # AskTube AI — Deployment Guide
 
-This guide deploys the full stack (Next.js frontend, FastAPI backend, ChromaDB, and
+> **Read §0 first.** The live demo runs on Vercel + Render with a managed
+> PostgreSQL (pgvector) database — see §0, Path B. Sections 1–8 below describe
+> the **historical single-host EC2 deployment**, whose instance was terminated in
+> July 2026. They remain a working recipe for a single-VM setup, but they still
+> describe ChromaDB as the vector store; ChromaDB has since been removed from the
+> codebase entirely and replaced by PostgreSQL + pgvector behind a single
+> `DATABASE_URL`. Treat every `CHROMA_*` variable below as historical.
+
+Sections 1–8 deploy the full stack (Next.js frontend, FastAPI backend, ChromaDB, and
 AskTube analytics/observability) on a single host behind an Nginx reverse proxy,
 with HTTPS via DuckDNS and Certbot.
 
@@ -15,8 +23,10 @@ https://asktube-ai.duckdns.org
 ## 0. Free demo hosting ($0)
 
 For a class/demo project the paid EC2 path (sections 1–8 below) is overkill. Two
-free paths work; **Oracle Cloud is recommended** because it preserves data across
-restarts. The Vercel + Render fallback loses data on idle and is only a last resort.
+free paths work. **Path B (Vercel + Render) is what the live demo actually runs**
+— its old drawback, losing the vector store on every restart, no longer applies
+now that vectors and conversation history live in managed PostgreSQL. Oracle
+Cloud remains the better choice if you want a single always-on VM you control.
 
 ### Path A — Oracle Cloud "Always Free" VM (recommended)
 
@@ -58,9 +68,15 @@ torch is installed at all.
 Use only if Oracle signup or capacity fails. Honest tradeoffs up front:
 - **A card is required** by Render despite the "free" tier.
 - Services **spin down after 15 idle minutes** with 30–60 s cold starts.
-- **No persistent disk** — ChromaDB contents and the SQLite analytics DB are lost
-  on every restart. Re-ingest a demo video before each showing.
-- Render's free **Postgres self-deletes after ~30 days.**
+- **No persistent disk** — but this no longer costs you the demo. Transcript
+  vectors and conversation history live in PostgreSQL via `DATABASE_URL`, so they
+  survive a restart; this was verified live (ingest → restart → the same query
+  returned identical chunks, ids and distances, no re-ingest). Only the SQLite
+  analytics DB still resets, which is cosmetic. **Warm `/health` before
+  presenting; re-ingesting is no longer required.**
+- Render's free **Postgres self-deletes after ~30 days** — use an external
+  managed Postgres (the live demo uses a Supabase free-tier project) rather than
+  Render's own.
 
 **Setup:**
 - **Frontend → Vercel.** Import the repo, set root to `frontend/`, framework
@@ -68,8 +84,14 @@ Use only if Oracle signup or capacity fails. Honest tradeoffs up front:
   (Next.js bakes it into the bundle). Add the Vercel URL to backend `CORS_ORIGINS`.
 - **Backend → Render.** Web service from `backend/`, start command
   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Set all `.env` vars, plus
-  `CHROMA_USE_HTTP=false` (embedded Chroma inside the backend — there is no second
-  free service with a disk). Re-deploy.
+  `DATABASE_URL=postgresql+asyncpg://...` pointing at your managed Postgres.
+  There is no second service to run: that one variable selects the pgvector
+  store, the Postgres conversation store and Postgres analytics at once. Run
+  `cd backend && python -m alembic upgrade head` against the **port-5432**
+  endpoint before the first deploy — migrations do not run automatically, and
+  the transaction pooler (port 6543) is for the running app, not for Alembic.
+  `WEBSHARE_PROXY_URL` is also required, or transcript ingestion 502s from
+  Render's datacenter IPs. Re-deploy.
 
 ### Retiring the paid EC2 instance
 
@@ -174,11 +196,19 @@ NEXT_PUBLIC_WS_URL=wss://asktube-ai.duckdns.org
 # CORS - must match the URL your browser uses to reach the app
 CORS_ORIGINS=https://asktube-ai.duckdns.org,http://localhost:3000
 
-# ChromaDB — Docker service name, do not change
-CHROMA_USE_HTTP=true
-CHROMA_HOST=chromadb
-CHROMA_PORT=8000
-CHROMA_COLLECTION_NAME=asktube_videos
+# Database — one URL for vectors, analytics and conversation history.
+# docker-compose.yml ships a `postgres` service on pgvector/pgvector:pg16.
+# Run the migrations once: docker compose exec backend python -m alembic upgrade head
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
+VECTOR_COLLECTION_NAME=asktube_videos
+
+# HISTORICAL — the CHROMA_* variables below are read by nothing. ChromaDB was
+# removed; VECTOR_BACKEND accepts only `pgvector` or `memory`, and the value
+# `chroma` now raises a ValueError naming it as removed. Kept only so an older
+# .env on an existing host is recognisable. Delete them.
+# CHROMA_USE_HTTP=true
+# CHROMA_HOST=chromadb
+# CHROMA_PORT=8000
 
 # Models
 WHISPER_MODEL=whisper-1
@@ -199,7 +229,7 @@ ANALYTICS_DATABASE_URL=sqlite+aiosqlite:///./data/analytics.db
 
 ### Optional: NVIDIA chat provider (NIM)
 
-You can route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). Embeddings (`text-embedding-3-small`) and Whisper stay on OpenAI, so existing ChromaDB collections and citations are unaffected. Append to your `.env`:
+You can route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). Embeddings (`text-embedding-3-small`) and Whisper stay on OpenAI, so stored vectors and citations are unaffected. Append to your `.env`:
 
 ```dotenv
 # Get a free key at https://build.nvidia.com (rate-limited; fine for demos).
@@ -235,8 +265,11 @@ Trade-offs: the backend image grows ~800 MB (torch), CPU embedding is slower tha
 # 1. Rebuild (first build downloads torch; expect ~10-20 min)
 docker compose up -d --build backend
 
-# 2. Wipe the existing collection — dimensions changed 1536→384
-docker compose exec backend python -c "import chromadb; c=chromadb.HttpClient(host='chromadb',port=8000); c.delete_collection('asktube_videos')"
+# 2. Wipe the stored vectors — dimensions change 1536->384, and
+#    transcript_chunks.embedding is a fixed-width vector(1536) column, so
+#    mixing dimensions returns garbage rather than failing. Changing the
+#    column width needs its own Alembic migration.
+docker compose exec postgres psql -U postgres -c "truncate table transcript_chunks;"
 
 # 3. Re-ingest each video you want to query.
 ```
@@ -406,7 +439,7 @@ Certificates auto-renew every 12 hours via the `certbot` sidecar container.
 > ```text
 > https://asktube-ai.duckdns.org  -> DuckDNS A record 216.198.79.1 -> Vercel (frontend)
 > https://asktube-ai.vercel.app   -> same frontend (backup URL)
-> https://asktube-ai-q2gi.onrender.com -> Render (backend, embedded Chroma)
+> https://asktube-ai-q2gi.onrender.com -> Render (backend; vectors in managed Postgres/pgvector)
 > ```
 >
 > DuckDNS works with Vercel because `duckdns.org` is on the Public Suffix List,

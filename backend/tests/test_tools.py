@@ -1,6 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+from app.core.config import settings
 from app.schemas.chunks import TranscriptChunk
 from app.schemas.rag import ChatMessage, RAGChatResponse, TimestampCitation
 from app.schemas.search import YouTubeSearchResponse, YouTubeVideo
@@ -11,6 +12,7 @@ from app.services.transcript_service import TranscriptFetchOptions
 from app.tools.answer_question import make_answer_question_tool
 from app.tools.chunk_transcript import make_chunk_transcript_tool
 from app.tools.extract_transcript import make_extract_transcript_tool
+from app.tools.ingest_video import make_ingest_video_tool
 from app.tools.retrieve_context import make_retrieve_context_tool
 from app.tools.search_youtube_videos import make_search_youtube_videos_tool
 from app.tools.store_video_vectors import make_store_video_vectors_tool
@@ -203,8 +205,10 @@ def test_chunk_transcript_calls_service_with_correct_options() -> None:
 
     service.chunk_transcript.assert_called_once()
     kwargs = service.chunk_transcript.call_args.kwargs
+    # Asserted against the setting, not a literal: the tool used to hardcode
+    # 1200, so changing CHUNK_MAX_CHARS silently did nothing on this path.
     assert kwargs["options"] == ChunkingOptions(
-        max_chunk_chars=1200, overlap_segments=1, include_embeddings=False
+        max_chunk_chars=settings.chunk_max_chars, overlap_segments=1, include_embeddings=False
     )
     assert result["chunk_count"] == 1
     assert result["chunks"][0]["video_id"] == "abc123"
@@ -245,6 +249,43 @@ def test_chunk_transcript_deserializes_transcript_dict() -> None:
 def test_chunk_transcript_tool_name() -> None:
     tool = make_chunk_transcript_tool(MagicMock())
     assert tool.name == "chunk_transcript"
+
+
+# ---------------------------------------------------------------------------
+# ingest_video
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_video_chunks_with_configured_chunk_settings() -> None:
+    chunk = make_chunk()
+    transcript_service = MagicMock()
+    transcript_service.get_transcript = AsyncMock(return_value=make_transcript())
+    chunking_service = MagicMock()
+    chunking_service.chunk_transcript = AsyncMock(return_value=([chunk], "text-embedding-3-small"))
+    vectorstore_service = MagicMock()
+    vectorstore_service.upsert_chunks = AsyncMock(return_value=[chunk.chunk_id])
+
+    tool = make_ingest_video_tool(transcript_service, chunking_service, vectorstore_service)
+    result = asyncio.run(tool.ainvoke({"video_id": "abc123"}))
+
+    chunking_service.chunk_transcript.assert_called_once()
+    kwargs = chunking_service.chunk_transcript.call_args.kwargs
+    # Asserted against the setting, not a literal: this is the call site that
+    # determines production chunk size on the agent-driven ingest path, and it
+    # used to hardcode 1200 like the other three (now-fixed) call sites.
+    assert kwargs["options"] == ChunkingOptions(
+        max_chunk_chars=settings.chunk_max_chars,
+        overlap_segments=settings.chunk_overlap_segments,
+        include_embeddings=True,
+    )
+    assert result["video_id"] == "abc123"
+    assert result["chunk_count"] == 1
+    assert result["status"] == "ingested"
+
+
+def test_ingest_video_tool_name() -> None:
+    tool = make_ingest_video_tool(MagicMock(), MagicMock(), MagicMock())
+    assert tool.name == "ingest_video"
 
 
 # ---------------------------------------------------------------------------

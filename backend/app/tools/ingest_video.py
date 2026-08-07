@@ -1,6 +1,7 @@
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.services.chunking_service import ChunkingOptions, ChunkingService
 from app.services.transcript_service import TranscriptFetchOptions, TranscriptService
 from app.services.vectorstore_service import VectorStoreService
@@ -23,7 +24,11 @@ def make_ingest_video_tool(
         )
         chunks, embedding_model = await chunking_service.chunk_transcript(
             transcript=transcript,
-            options=ChunkingOptions(max_chunk_chars=1200, overlap_segments=1, include_embeddings=True),
+            options=ChunkingOptions(
+                max_chunk_chars=settings.chunk_max_chars,
+                overlap_segments=settings.chunk_overlap_segments,
+                include_embeddings=True,
+            ),
         )
         stored_ids = await vectorstore_service.upsert_chunks(chunks)
         return {

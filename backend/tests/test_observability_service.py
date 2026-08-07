@@ -84,6 +84,51 @@ def test_evaluate_response_quality_checks_latency_citations_and_grounding() -> N
     assert metrics.hallucination_risk < 0.35
 
 
+def make_summary_response(answer: str) -> RAGChatResponse:
+    """A response shaped like the summarisation path: retrieved_context is
+    empty on purpose (no chunk selection took place - see RAGService.answer),
+    but citations are still populated from validated timestamps.
+    """
+    return RAGChatResponse(
+        session_id="session-1",
+        answer=answer,
+        citations=[
+            TimestampCitation(
+                chunk_id="video123:0:test",
+                video_id="video123",
+                start_seconds=12.0,
+                end_seconds=42.0,
+                timestamp="00:12-00:42",
+                text="The transcript says retrieval should happen before generation.",
+            )
+        ],
+        retrieved_context=[],
+        memory=[ChatMessage(role="user", content="What is this video about?")],
+    )
+
+
+def test_evaluate_response_quality_judges_the_summary_path_by_its_citations() -> None:
+    # The summarisation path (broad questions) returns retrieved_context=[] on
+    # purpose. Before this test's fix, that empty context made every summary
+    # answer score as ungrounded (groundedness 0.0, hallucination_risk 1.0)
+    # and its real citations as uncited (has_citations False despite
+    # citation_count > 0) - self-contradictory, and wrong given the citations
+    # were validated against real chunks. Judging against the citations
+    # instead should score a grounded, on-topic answer as passing.
+    metrics = evaluate_response_quality(
+        response=make_summary_response("Retrieval should happen before generation."),
+        latency_ms=250.0,
+        latency_budget_ms=1000,
+        hallucination_threshold=0.35,
+    )
+
+    assert metrics.citation_quality.has_citations is True
+    assert metrics.citation_quality.citation_count == 1
+    assert metrics.groundedness_score > 0.0
+    assert metrics.hallucination_risk < 1.0
+    assert metrics.passed is True
+
+
 class FakeEvaluationService:
     async def evaluate_rag(self, request):  # noqa: ANN001
         response = make_response(f"Answered: {request.message}")

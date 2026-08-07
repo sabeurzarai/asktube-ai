@@ -27,6 +27,9 @@ data/
 *.db
 backend/chroma_data/
 
+# Graphify knowledge graph (regenerate with `graphify update .`)
+graphify-out/
+
 # Logs
 *.log
 npm-debug.log*

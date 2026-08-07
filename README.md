@@ -11,11 +11,12 @@ AI-powered YouTube learning platform. Search for videos, extract transcripts, an
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, TypeScript, TailwindCSS, Framer Motion, Three.js |
-| Backend | FastAPI, Python 3.12, LangChain, langchain-community, ChromaDB, SQLAlchemy async |
+| Backend | FastAPI, Python 3.12, LangChain, langchain-community, SQLAlchemy async, Alembic |
+| Vector store | PostgreSQL + pgvector (single `DATABASE_URL`, shared with analytics and conversation history) |
 | AI | OpenAI GPT-4o-mini, text-embedding-3-small, Whisper |
 | Observability | AskTube analytics dashboard, Prometheus metrics, LangSmith tracing |
 | Data | YouTube Data API v3, youtube-transcript-api 1.2.4 |
-| Infra | Docker, Docker Compose, AWS EC2, Nginx, DuckDNS, Let’s Encrypt HTTPS, optional Render |
+| Infra | Docker, Docker Compose, Vercel (frontend), Render (backend), DuckDNS |
 
 ---
 
@@ -68,9 +69,16 @@ Open **http://localhost:3000**.
 
 ---
 
-## Deploying to AWS EC2
+## Deploying to AWS EC2 (historical — no longer the live demo)
 
-The current hosted demo runs the three Docker services on a single EC2 instance behind Nginx and HTTPS:
+> **Superseded.** The EC2 instance was terminated in July 2026 and its Elastic IP
+> released. The live demo now runs on Vercel + Render (see the next section), and
+> the vector store is PostgreSQL + pgvector rather than a ChromaDB container.
+> This section is kept because the Nginx/Let's Encrypt/compose layout is still a
+> working recipe for a single-VM deployment — but it describes the old stack, and
+> the ChromaDB service in it no longer exists in the codebase.
+
+It ran the three Docker services on a single EC2 instance behind Nginx and HTTPS:
 
 | Service | Public access |
 |---------|---------------|
@@ -116,27 +124,32 @@ Voice search requires HTTPS in Chrome. The old raw-IP URL works for basic text t
 
 ## Deploying to Render
 
-Render runs each service as a separate Docker container. You need three services:
+You need three pieces:
 
-1. **ChromaDB** - vector store with a persistent disk
-2. **Backend** - FastAPI API
-3. **Frontend** - Next.js app
+1. **PostgreSQL with pgvector** - the vector store, plus analytics and conversation history
+2. **Backend** - FastAPI API on Render
+3. **Frontend** - Next.js app (the live demo uses Vercel; Render works too)
 
-### Step 1 - Deploy ChromaDB
+### Step 1 - Provision PostgreSQL with pgvector
 
-1. Create a new **Web Service** on Render
-2. Select **Deploy an existing image** -> `chromadb/chroma:1.3.7`
-3. Set **Port**: `8000`
-4. Add a **Disk** (Render Disks):
-   - Mount path: `/chroma/chroma`
-   - Size: 1 GB minimum
-5. Add **Environment Variables**:
+Any managed Postgres with the `pgvector` extension works. The live demo uses a
+Supabase free-tier project.
+
+1. Create the database and enable the extension: `create extension if not exists vector;`
+2. Copy the connection string and change the scheme to `postgresql+asyncpg://`.
+   Use the **port-5432** (direct/session) entry, not the project URL — the
+   `https://<ref>.supabase.co` address shown in the dashboard is the REST
+   endpoint, not the database.
+3. Run the migrations once, against that port-5432 endpoint:
+   ```bash
+   cd backend && python -m alembic upgrade head
    ```
-   IS_PERSISTENT=TRUE
-   PERSIST_DIRECTORY=/chroma/chroma
-   ANONYMIZED_TELEMETRY=FALSE
-   ```
-6. Copy the **internal service URL** (e.g. `asktube-chromadb` for internal hostname)
+   Nothing runs them automatically at container start.
+
+There is no separate vector-store service and no persistent disk to attach:
+`DATABASE_URL` alone selects the pgvector backend. Leave `VECTOR_BACKEND` unset
+and it is derived — set means `pgvector`, absent means an in-memory store that
+is lost on restart.
 
 ### Step 2 - Deploy the Backend
 
@@ -149,15 +162,14 @@ Render runs each service as a separate Docker container. You need three services
    ```
    YOUTUBE_API_KEY=<your key>
    OPENAI_API_KEY=<your key>
-   CHROMA_USE_HTTP=true
-   CHROMA_HOST=<chromadb-internal-hostname>
-   CHROMA_PORT=8000
-   CHROMA_COLLECTION_NAME=asktube_videos
+   DATABASE_URL=postgresql+asyncpg://<user>:<password>@<host>:5432/postgres
+   VECTOR_COLLECTION_NAME=asktube_videos
    CORS_ORIGINS=https://<your-frontend>.onrender.com
+   WEBSHARE_PROXY_URL=http://<user>:<pass>@p.webshare.io:80
    WHISPER_MODEL=whisper-1
    CHAT_MODEL=gpt-4o-mini
    EMBEDDING_MODEL=text-embedding-3-small
-   CHUNK_MAX_CHARS=1200
+   CHUNK_MAX_CHARS=600
    CHUNK_OVERLAP_SEGMENTS=1
    AUDIO_CACHE_DIR=/app/data/audio_cache
    RAG_EVALUATOR_MODE=heuristic
@@ -197,10 +209,10 @@ Render runs each service as a separate Docker container. You need three services
 | `OPENAI_API_KEY` | Yes | OpenAI - embeddings, chat, Whisper |
 | `NEXT_PUBLIC_API_URL` | Yes (prod) | Backend URL used by the frontend |
 | `CORS_ORIGINS` | Yes (prod) | Comma-separated frontend origins |
-| `CHROMA_USE_HTTP` | Docker/prod | `true` to use HTTP client |
-| `CHROMA_HOST` | Docker/prod | ChromaDB hostname |
-| `CHROMA_PORT` | Docker/prod | ChromaDB port (usually `8000`) |
-| `CHROMA_PERSIST_DIR` | Local only | Path for embedded ChromaDB (default `./chroma_data`) |
+| `DATABASE_URL` | Yes (prod) | Single async SQLAlchemy URL (`postgresql+asyncpg://...`) for vectors, analytics and conversation history |
+| `VECTOR_BACKEND` | No | `pgvector` or `memory`. Unset derives from `DATABASE_URL`: set → `pgvector`, absent → `memory` |
+| `VECTOR_COLLECTION_NAME` | No | Default: `asktube_videos`. Reported as `collection_name` in API responses |
+| `CONVERSATION_BACKEND` | No | `postgres` or `memory`. Same derivation as `VECTOR_BACKEND` |
 | `CHAT_MODEL` | No | Default: `gpt-4o-mini` (used when `LLM_PROVIDER=openai`) |
 | `EMBEDDING_MODEL` | No | Default: `text-embedding-3-small` (used when `EMBEDDING_PROVIDER=openai`) |
 | `EMBEDDING_PROVIDER` | No | `openai` (default) or `local` — free CPU embeddings via HuggingFace |
@@ -298,7 +310,7 @@ AskTube AI/
 | POST | `/api/videos/{id}/ingest` | Ingest video (REST, with progress polling) |
 | WS | `/api/videos/{id}/ingest/stream` | Ingest video with real-time WebSocket progress events |
 | GET | `/api/vectorstore/search` | Semantic search over stored vectors |
-| POST | `/api/vectorstore/transcripts` | Store transcript chunks in ChromaDB |
+| POST | `/api/vectorstore/transcripts` | Embed transcript chunks and store them in pgvector |
 | POST | `/api/chat` | RAG chat (single turn) |
 | WS | `/api/chat/stream` | RAG chat with streaming response |
 | POST | `/api/agent/chat` | LangChain tool-calling agent chat |
@@ -316,16 +328,18 @@ AskTube AI/
 This section maps AskTube AI's implementation to the IronHack final-project grading criteria.
 
 ### Chatbot with LLM
-The `/api/chat` endpoint accepts a user question and a YouTube video ID, retrieves relevant transcript chunks from ChromaDB via RAG, and generates a grounded answer using OpenAI GPT-4o-mini through LangChain's `ChatOpenAI`. Every answer includes timestamped citations so the user can verify the source.
+The `/api/chat` endpoint accepts a user question and a YouTube video ID, retrieves relevant transcript chunks from the pgvector store via RAG, and generates a grounded answer using OpenAI GPT-4o-mini through LangChain's `ChatOpenAI`. Every answer includes timestamped citations so the user can verify the source.
 
 ### LangChain Tools / Tool-calling Agent
 Seven `StructuredTool` objects live in `backend/app/tools/`: `search_youtube_videos`, `extract_transcript`, `chunk_transcript`, `store_video_vectors`, `ingest_video`, `retrieve_context`, and `answer_question`. `AgentService` (in `agent_service.py`) binds these tools to the LLM via `bind_tools()` and runs a tool-calling loop: the model decides which tools to call, the agent executes them, and the results are fed back until a final answer is produced. This is exposed through the dedicated `POST /api/agent/chat` route.
 
 ### Conversational Memory
-`memory_service.py` (ConversationMemoryService) maintains per-session chat history keyed by `session_id`. The last *k* turns are injected into the prompt context on every request, enabling coherent multi-turn conversations about video content.
+`memory_service.py` resolves a `ConversationStore` — Postgres when `DATABASE_URL` is set, in-process otherwise — keyed by `session_id`. History is trimmed to the newest 8 messages per session and injected into the prompt context on every request, enabling coherent multi-turn conversations about video content. Memory degrades rather than fails: if the store is unreachable the answer is still produced, with empty history.
 
-### ChromaDB Vector Database
-`vectorstore_service.py` manages a ChromaDB collection (`asktube_videos`). Transcript chunks are embedded with `text-embedding-3-small` and upserted with metadata (video ID, title, timestamp). At query time, a similarity search retrieves the top-k most relevant chunks, which are passed to the LLM as grounding context.
+Follow-up questions are also **rewritten into standalone search queries** before retrieval. A question like *"and what did you just say it uses?"* carries no information about the video, so embedding it verbatim returns arbitrary chunks. The rewrite resolves it against the conversation; first turns are never rewritten, and generation always receives the original question.
+
+### pgvector Vector Store
+`vectorstore_service.py` owns embedding generation and delegates persistence to the store selected by `VECTOR_BACKEND` (`pgvector` or `memory`). Transcript chunks are embedded with `text-embedding-3-small` and written to the `transcript_chunks` table with metadata (video ID, timestamps, segment indices). At query time a cosine similarity search (`<=>`, HNSW index) retrieves the top-k most relevant chunks, which are passed to the LLM as grounding context. Re-ingesting a video **replaces** its chunks rather than upserting them.
 
 ### User Interface
 The frontend is a Next.js 14 app with a cinematic, dark-mode UI (TailwindCSS, Framer Motion, Three.js). It provides a video search console, a chat panel with real-time streaming responses, a Three.js 3D robot assistant, and a floating journey companion - all with TTS read-aloud using a male voice.
@@ -349,14 +363,16 @@ AskTube AI includes a production-style analytics system. The frontend tracks pro
 Analytics are stored in SQLAlchemy tables (`analytics_events`, `video_metrics`, `chat_metrics`, `rag_metrics`) and displayed in the Next.js dashboard at `/analytics`. Every metric card and chart on the dashboard includes an inline tooltip explaining what the metric measures and why it matters. Prometheus-format operational metrics are exposed at `/metrics`. LangSmith remains available for chain and tool tracing. See [Analytics and Observability](docs/analytics_observability.md).
 
 ### Deployment
-The project ships three Docker containers orchestrated via Docker Compose:
-1. `chromadb` - ChromaDB vector store with a persistent disk volume
+Local development ships three Docker containers orchestrated via Docker Compose:
+1. `postgres` - `pgvector/pgvector:pg16`, the vector store
 2. `backend` - FastAPI + LangChain application
 3. `frontend` - Next.js production build
 
-Analytics persistence defaults to SQLite in the backend data volume for local and EC2 simplicity. Production deployments can switch to PostgreSQL by setting `ANALYTICS_DATABASE_URL=postgresql+asyncpg://...`.
+Migrations are a manual step, run once: `docker compose exec backend python -m alembic upgrade head`.
 
-The project is deployed with Docker Compose on **AWS EC2** for the hosted demo and remains Render-compatible through the service-level Dockerfiles. The EC2 demo is served at `https://asktube-ai.duckdns.org` through DuckDNS, Nginx, and a Let’s Encrypt certificate, so browser microphone permissions work on the hosted app.
+Persistence is driven by a single `DATABASE_URL`, which covers vectors, analytics and conversation history. Unset, everything falls back to SQLite and in-memory stores — fine locally, but a deployment that has a database and forgets the variable would silently run without persistence.
+
+The hosted demo runs the frontend on **Vercel** and the backend on **Render** (both free tier, $0/month), with the database on managed Postgres. It is served at `https://asktube-ai.duckdns.org` via a DuckDNS A record pointing at Vercel, so browser microphone permissions work over HTTPS.
 
 ### YouTube Transcript API Usage
 `youtube-transcript-api` (v1.2.4) is the **primary** and **preferred** method for extracting text from YouTube videos. It fetches publicly available auto-generated or manually uploaded captions without downloading any audio or video. See [YouTube Data Strategy](docs/youtube_data_strategy.md) for full details.
@@ -370,7 +386,7 @@ Browser microphone access requires a secure origin. Use `https://asktube-ai.duck
 
 ### Optional: NVIDIA chat provider (NIM)
 
-AskTube AI defaults to OpenAI for chat generation. You can optionally route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). This swaps the chat model while leaving embeddings and Whisper on OpenAI, so existing ChromaDB collections and citations keep working unchanged.
+AskTube AI defaults to OpenAI for chat generation. You can optionally route **chat generation only** through NVIDIA's OpenAI-compatible NIM endpoint (`https://integrate.api.nvidia.com/v1`). This swaps the chat model while leaving embeddings and Whisper on OpenAI, so stored vectors and citations keep working unchanged.
 
 1. Get a free key at **https://build.nvidia.com** (free endpoints are rate-limited — fine for demos, not production traffic).
 2. In your `.env`, set:
@@ -411,11 +427,14 @@ By default AskTube AI uses OpenAI's `text-embedding-3-small` for embeddings (che
    ```bash
    docker compose up -d --build backend
    ```
-3. ⚠️ **Wipe the existing ChromaDB collection** (vector dimensions changed 1536→384) and re-ingest all videos:
+3. ⚠️ **Wipe the stored vectors and re-ingest every video.** The embedding
+   dimension changes 1536→384, and `transcript_chunks.embedding` is a
+   fixed-width `vector(1536)` column — mixing dimensions returns garbage rather
+   than failing:
    ```bash
-   docker compose exec backend python -c "import chromadb; c=chromadb.HttpClient(host='chromadb',port=8000); c.delete_collection('asktube_videos')"
+   docker compose exec postgres psql -U postgres -c "truncate table transcript_chunks;"
    ```
-   The app recreates the collection automatically on the next ingest.
+   Changing the column width needs its own Alembic migration.
 4. Re-ingest each video you want to query.
 
 To return to OpenAI embeddings, set `EMBEDDING_PROVIDER=openai`, wipe the collection again, rebuild, and re-ingest.
@@ -443,9 +462,17 @@ Your `OPENAI_API_KEY` is invalid or expired. Generate a new one at [platform.ope
 **"NVIDIA_API_KEY is required when LLM_PROVIDER=nvidia"**
 You set `LLM_PROVIDER=nvidia` but didn't provide `NVIDIA_API_KEY`. Get a free key at [build.nvidia.com](https://build.nvidia.com) and add it to `.env`, or switch back with `LLM_PROVIDER=openai`.
 
-**"Unable to connect to ChromaDB"**
-- Local dev: set `CHROMA_USE_HTTP=false` (uses embedded SQLite, no server needed)
-- Docker / production: `CHROMA_USE_HTTP=true`, `CHROMA_HOST=chromadb`
+**Retrieval returns nothing, or `result_count: 0` with HTTP 200**
+An empty `transcript_chunks` table looks like a broken query rather than missing
+data. Check the row count before debugging retrieval. If the table is populated
+but nothing comes back, confirm the backend actually selected pgvector: with
+`VECTOR_BACKEND` unset it is derived from `DATABASE_URL`, so a missing
+`DATABASE_URL` silently yields an in-memory store that is empty after restart.
+
+**`NoSuchModuleError: Can't load plugin: sqlalchemy.dialects:https`**
+`DATABASE_URL` holds the Supabase *project* URL (the REST endpoint) instead of a
+connection string. Use the port-5432 entry from Supabase → Connect with the
+scheme changed to `postgresql+asyncpg://`.
 
 **CORS errors in browser**
 Add your frontend URL to `CORS_ORIGINS` in the backend:

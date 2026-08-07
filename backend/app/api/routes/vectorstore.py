@@ -122,7 +122,7 @@ async def ingest_video_transcript(
         ),
     ],
     language: Annotated[str, Query(min_length=2, max_length=10)] = "en",
-    max_chunk_chars: int = Query(default=1200, ge=300, le=4000),
+    max_chunk_chars: int = Query(default=settings.chunk_max_chars, ge=300, le=4000),
     overlap_segments: int = Query(default=1, ge=0, le=5),
     transcript_service: TranscriptService = Depends(get_transcript_service),
     chunking_service: ChunkingService = Depends(get_chunking_service),

@@ -179,3 +179,60 @@ async def test_result_carries_timestamps_and_metadata(store):
     assert result.end_seconds == 40.0
     assert result.segment_indices == [3]
     assert result.metadata["source"] == "captions"
+
+
+async def test_list_video_chunks_returns_every_chunk_in_index_order(store):
+    # Inserted out of order so a backend that returns insertion order fails.
+    await store.replace_video_chunks(
+        "vid1",
+        [make_chunk("vid1", i, [1.0, float(i) / 10, 0.0]) for i in (2, 0, 1)],
+    )
+
+    chunks = await store.list_video_chunks("vid1")
+
+    assert [c.index for c in chunks] == [0, 1, 2]
+    assert [c.chunk_id for c in chunks] == ["vid1-0", "vid1-1", "vid1-2"]
+
+
+async def test_list_video_chunks_isolates_videos(store):
+    await store.replace_video_chunks("vid1", [make_chunk("vid1", 0, [1.0, 0.0, 0.0])])
+    await store.replace_video_chunks("vid2", [make_chunk("vid2", 0, [0.0, 1.0, 0.0])])
+
+    assert [c.video_id for c in await store.list_video_chunks("vid1")] == ["vid1"]
+    assert [c.video_id for c in await store.list_video_chunks("vid2")] == ["vid2"]
+
+
+async def test_list_video_chunks_returns_empty_for_unknown_video(store):
+    # Empty, not an error: an un-ingested video is an ordinary state, and the
+    # summarisation path relies on being able to fall through quietly.
+    assert await store.list_video_chunks("never-ingested") == []
+
+
+async def test_list_video_chunks_preserves_timestamps_and_text(store):
+    await store.replace_video_chunks(
+        "vid1", [make_chunk("vid1", 3, [1.0, 0.0, 0.0], text="the important sentence")]
+    )
+
+    chunk = (await store.list_video_chunks("vid1"))[0]
+
+    assert chunk.text == "the important sentence"
+    assert chunk.start_seconds == 30.0
+    assert chunk.end_seconds == 40.0
+    assert chunk.segment_indices == [3]
+    # Pinned deliberately: pgvector never selects the embedding column, so a
+    # memory backend that returned it would be a silent cross-backend divergence.
+    assert chunk.embedding is None
+
+
+async def test_list_video_chunks_returns_copies_the_caller_cannot_corrupt(store):
+    # The memory backend used to hand out its live stored objects. Mutating a
+    # returned chunk's nested list must not reach back into the store.
+    await store.replace_video_chunks("vid1", [make_chunk("vid1", 0, [1.0, 0.0, 0.0])])
+
+    first = (await store.list_video_chunks("vid1"))[0]
+    first.segment_indices.append(999)
+    first.metadata["source"] = "mutated"
+
+    second = (await store.list_video_chunks("vid1"))[0]
+    assert second.segment_indices == [0]
+    assert second.metadata.get("source") == "captions"
