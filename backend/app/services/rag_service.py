@@ -15,10 +15,17 @@ from app.schemas.vectorstore import VectorSearchResult
 from app.services.conversation_store import ConversationStore
 from app.services.llm_provider import create_chat_model, require_chat_credentials
 from app.services.memory_service import get_memory_service
+from app.services.question_kind import is_broad_question
 from app.services.vectorstore_service import VectorStoreService, get_vectorstore_service
 
 
 logger = logging.getLogger(__name__)
+
+
+# Above this the transcript will not fit alongside the prompt and the answer.
+# A judgement, not a measurement: far above both evaluation videos (10k and 14k)
+# and far below the model's context limit.
+SUMMARY_MAX_CHARS = 40_000
 
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
@@ -150,6 +157,63 @@ class RAGService:
         logger.info("Contextualized query: %r -> %r", message, rewritten)
         return rewritten
 
+    async def summarize_video(
+        self,
+        message: str,
+        video_id: str,
+    ) -> tuple[str, list[TimestampCitation]] | None:
+        """Summarise a whole video, or return None to fall through to retrieval.
+
+        None is not an error signal - it means "this path cannot help here", and
+        every such case is one the retrieval path already handles. The
+        summarisation path is an enhancement, so it degrades rather than failing,
+        the same way conversation memory and the query rewrite do.
+        """
+        # Imported here, not at module scope: summary.py imports format_timestamp
+        # from this module, so a top-level import would be circular.
+        from app.services.summary import (
+            SUMMARY_PROMPT,
+            citations_for_timestamps,
+            extract_timestamps,
+            rebuild_transcript,
+        )
+
+        try:
+            chunks = await self.vectorstore.list_video_chunks(video_id)
+        except Exception as exc:  # noqa: BLE001 - see _contextualize for the rationale
+            logger.warning("Could not read chunks for %s: %s", video_id, exc)
+            return None
+
+        if not chunks:
+            logger.info("No chunks stored for %s; not summarising.", video_id)
+            return None
+
+        transcript = rebuild_transcript(chunks)
+        if len(transcript) > SUMMARY_MAX_CHARS:
+            logger.warning(
+                "Transcript for %s is %d characters, over the %d limit; "
+                "answering by retrieval instead.",
+                video_id, len(transcript), SUMMARY_MAX_CHARS,
+            )
+            return None
+
+        try:
+            chain = SUMMARY_PROMPT | self.create_chat_model(streaming=False)
+            response = await chain.ainvoke(
+                {"transcript": transcript, "question": message},
+                config={"run_name": "video_summary", "tags": ["rag", "summary"]},
+            )
+            answer = str(response.content).strip()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Summarisation failed for %s: %s", video_id, exc)
+            return None
+
+        if not answer:
+            logger.warning("Summarisation returned empty text for %s.", video_id)
+            return None
+
+        return answer, citations_for_timestamps(extract_timestamps(answer), chunks)
+
     @traceable(name="rag_answer", run_type="chain", project_name=settings.langsmith_project)
     async def answer(
         self,
@@ -159,6 +223,35 @@ class RAGService:
         top_k: int,
     ) -> RAGChatResponse:
         answer_start = time.perf_counter()
+
+        if is_broad_question(message) and video_id is not None:
+            summary = await self.summarize_video(message=message, video_id=video_id)
+            if summary is not None:
+                summary_answer, summary_citations = summary
+                active_session_id = session_id or self.memory.create_session_id()
+                await self._append_exchange(active_session_id, message, summary_answer)
+                messages = await self._get_history(active_session_id)
+                await self._record_rag_metrics(
+                    message=message,
+                    session_id=active_session_id,
+                    retrieved_context=[],
+                    citations=summary_citations,
+                    answer=summary_answer,
+                    retrieval_ms=0,
+                    generation_ms=(time.perf_counter() - answer_start) * 1000,
+                    started_at=answer_start,
+                    messages=messages,
+                )
+                return RAGChatResponse(
+                    session_id=active_session_id,
+                    answer=summary_answer,
+                    citations=summary_citations,
+                    # Empty on purpose: no chunk selection took place, and listing
+                    # the chunks that fed the summary would misrepresent that.
+                    retrieved_context=[],
+                    memory=messages,
+                )
+
         retrieval_start = time.perf_counter()
         active_session_id, retrieved_context, history = await self.prepare_context(
             message=message,

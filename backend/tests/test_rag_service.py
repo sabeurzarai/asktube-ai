@@ -313,3 +313,160 @@ async def test_generation_receives_the_original_question_not_the_rewrite(monkeyp
     generation_prompt = CAPTURED_PROMPTS[1]
     assert "And what does it use?" in generation_prompt
     assert "which code editor does the tutorial use" not in generation_prompt
+
+
+# ---------------------------------------------------------------------------
+# Broad questions take the summarisation path
+# ---------------------------------------------------------------------------
+
+
+class ChunkListingVectorStoreService(CapturingVectorStoreService):
+    """A store that can also hand back a whole video."""
+
+    def __init__(self, chunks) -> None:  # noqa: ANN001
+        super().__init__()
+        self._chunks = chunks
+
+    async def list_video_chunks(self, video_id):  # noqa: ANN001
+        return list(self._chunks)
+
+
+def make_video_chunks() -> list:
+    from app.schemas.chunks import TranscriptChunk
+
+    return [
+        TranscriptChunk(
+            chunk_id=f"vid1-{i}", index=i, video_id="vid1",
+            text=f"section {i} of the video", start_seconds=float(i * 60),
+            end_seconds=float(i * 60 + 60), segment_indices=[i], token_estimate=5,
+            metadata={"source": "captions", "language": "en"},
+        )
+        for i in range(3)
+    ]
+
+
+async def test_broad_question_is_answered_from_the_whole_transcript(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(
+            responses=["Overview. [00:00] the start. [02:30] the end."]
+        ),
+    )
+
+    response = await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    # The search was never used: a summary is not a retrieval answer.
+    assert service.vectorstore.last_query is None
+    assert "Overview" in response.answer
+    # 00:00 lands in chunk 0 (0-60s), 02:30 in chunk 2 (120-180s). Deliberately
+    # NOT 02:00, which is the boundary between chunks 1 and 2 and would encode
+    # an arbitrary tie-break into the test.
+    assert [c.chunk_id for c in response.citations] == ["vid1-0", "vid1-2"]
+    assert response.retrieved_context == []
+
+
+async def test_narrow_question_still_takes_the_retrieval_path(monkeypatch) -> None:  # noqa: ANN001
+    # The constraint that matters most: nothing else changes.
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["a grounded answer"]),
+    )
+
+    await service.answer(
+        message="How do I do addition in Python?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert service.vectorstore.last_query == "How do I do addition in Python?"
+
+
+async def test_summary_falls_back_to_retrieval_when_the_model_fails(monkeypatch) -> None:  # noqa: ANN001
+    # Degrade, do not fail: a broken summary must still produce the answer the
+    # user would have got before this feature existed.
+    #
+    # create_chat_model is called twice here - once for the (failing) summary
+    # attempt, once for the retrieval-path generation that should follow it - so
+    # a single always-failing model would make the fallback fail too and prove
+    # nothing beyond the fact that summarize_video caught its own exception.
+    # This counts calls so only the FIRST one fails, letting the fallback
+    # generation actually succeed and produce a real answer to assert on.
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    calls = {"count": 0}
+
+    def flaky_then_working_model(streaming):  # noqa: ANN001
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return FailingChatModel(responses=["unused"])
+        return FakeListChatModel(responses=["a grounded answer"])
+
+    monkeypatch.setattr(service, "create_chat_model", flaky_then_working_model)
+
+    response = await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    # The retrieval path ran instead - proven by the search having happened.
+    assert service.vectorstore.last_query == "What is this video about?"
+    assert response.answer
+
+
+async def test_summary_falls_back_when_the_video_has_no_chunks(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService([])
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["a grounded answer"]),
+    )
+
+    response = await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert service.vectorstore.last_query == "What is this video about?"
+    assert response.answer
+
+
+async def test_summary_falls_back_when_the_transcript_is_too_long(monkeypatch) -> None:  # noqa: ANN001
+    from app.schemas.chunks import TranscriptChunk
+
+    huge = [
+        TranscriptChunk(
+            chunk_id="vid1-0", index=0, video_id="vid1", text="x" * 41_000,
+            start_seconds=0.0, end_seconds=60.0, segment_indices=[0],
+            token_estimate=5, metadata={"source": "captions", "language": "en"},
+        )
+    ]
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(huge)
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["a grounded answer"]),
+    )
+
+    await service.answer(
+        message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert service.vectorstore.last_query == "What is this video about?"
+
+
+async def test_broad_question_without_a_video_takes_the_retrieval_path(monkeypatch) -> None:  # noqa: ANN001
+    # There is nothing to summarise when no video is named.
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["a grounded answer"]),
+    )
+
+    await service.answer(
+        message="What is this video about?", video_id=None, session_id=None, top_k=5
+    )
+
+    assert service.vectorstore.last_query == "What is this video about?"
