@@ -139,8 +139,14 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   Four call sites used to hardcode 1200 and ignore the setting
   (`tools/ingest_video.py`, `tools/chunk_transcript.py`, and the `Query` defaults
   in `routes/chunks.py` and `routes/vectorstore.py`); they now read
-  `settings.chunk_max_chars`, and `test_tools.py` asserts against the setting
-  rather than a literal so the regression cannot return silently.
+  `settings.chunk_max_chars`. Two of the four have a regression guard in
+  `test_tools.py` that asserts the `ChunkingOptions`/call kwargs against the
+  setting rather than a literal (`test_chunk_transcript_calls_service_with_correct_options`
+  for `tools/chunk_transcript.py`, `test_ingest_video_chunks_with_configured_chunk_settings`
+  for `tools/ingest_video.py` — the one that determines production chunk size on
+  the agent path). The two `Query(default=settings.chunk_max_chars)` route
+  defaults in `routes/chunks.py` and `routes/vectorstore.py` remain untested: a
+  regression there would not be caught by the suite.
 - Summarisation path: a **broad** question ("what is this video about?") does not
   go through retrieval. `is_broad_question` in
   `backend/app/services/question_kind.py` classifies it with a **pure pattern
@@ -172,10 +178,21 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   Because the branch lives inside `RAGService.answer()`, the agent path
   (`agent_service._answer_via_rag`) and the `answer_question` tool inherit this
   behaviour for free — no separate agent-path wiring was added or is needed.
-  This was **verified, not assumed**: both call sites consume only `answer`,
-  `citations` and `session_id` from the response, nothing reads
-  `retrieved_context`, and the frontend never references `retrieved_context` at
-  all, so the empty context on this path is harmless everywhere it is consumed.
+  This was checked across the consumers of `RAGChatResponse`, not assumed —
+  but the first pass missed one of three, and that miss is worth recording
+  rather than papering over. `agent_service._answer_via_rag` and the
+  `answer_question` tool consume only `answer`, `citations` and `session_id`;
+  neither reads `retrieved_context`, and the frontend never references it
+  either, so the empty context is harmless there. The third consumer,
+  `observability_service.evaluate_response_quality` (used by both
+  `/api/evaluations/rag` and `/api/evaluations/conversation`), DOES read
+  `retrieved_context` and was missed — the empty list made it score every
+  summary answer as ungrounded (groundedness 0.0, hallucination_risk 1.0)
+  with a self-contradictory `has_citations=False` next to a nonzero
+  `citation_count`. It is fixed now: when `retrieved_context` is empty but
+  `citations` is not, `evaluate_response_quality` derives the context text and
+  the citation evaluation from the citations instead, mirroring the same
+  principle `_record_rag_metrics` already applies via `context_chars`.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
   scores 29 conversation cases across **two videos** in
   `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.
@@ -240,10 +257,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **275 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **280 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **271 passed, 5
+  local-embedding tests skip instead of running, giving **276 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`
