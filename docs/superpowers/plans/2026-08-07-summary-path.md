@@ -89,9 +89,6 @@ latency to every request, and would break the documented guarantee that a first
 turn makes no model call.
 """
 
-import json
-from pathlib import Path
-
 import pytest
 
 from app.services.question_kind import is_broad_question
