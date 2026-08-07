@@ -8,8 +8,13 @@ plus a list of segment indices - NOT per-segment text. So when chunk N covers
 segments 10-20 and chunk N+1 covers 20-30, segment 20's words are inside both
 strings and cannot be removed without the original segments. rebuild_transcript
 therefore drops only chunks whose segments are ENTIRELY already seen, and the
-one-segment boundary overlap remains: a few repeated words per boundary, about
-2% of the text, immaterial to a summary. The design spec claims full dedup; it
+one-segment boundary overlap remains: a few repeated words per boundary.
+Measured against both committed transcript fixtures at the current
+CHUNK_MAX_CHARS (600), that overlap is 9.1% of the text for fWjsdhR3z3c and
+13.4% for sQK3Yr4Sc_k - not the ~2% an earlier, larger chunk size gave, since
+a smaller chunk size means more boundaries and the overlap scales inversely
+with CHUNK_MAX_CHARS. Still immaterial to a summary: it is repeated words at
+segment boundaries, not repeated ideas. The design spec claims full dedup; it
 is wrong, and this is the correction.
 """
 
