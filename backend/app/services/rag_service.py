@@ -161,13 +161,21 @@ class RAGService:
         self,
         message: str,
         video_id: str,
-    ) -> tuple[str, list[TimestampCitation]] | None:
+    ) -> tuple[str, list[TimestampCitation], int] | None:
         """Summarise a whole video, or return None to fall through to retrieval.
 
         None is not an error signal - it means "this path cannot help here", and
         every such case is one the retrieval path already handles. The
         summarisation path is an enhancement, so it degrades rather than failing,
         the same way conversation memory and the query rewrite do.
+
+        Returns a 3-tuple of the answer text, the timestamp citations extracted
+        from it, and the character length of the rebuilt transcript that was
+        sent to the model. That third item is not cosmetic: the summary path
+        sends up to `SUMMARY_MAX_CHARS` of transcript in a single call while the
+        response's `retrieved_context` stays empty on purpose (see `answer`), so
+        callers need it to record the true cost of the call rather than
+        recording it as free.
         """
         # Imported here, not at module scope: summary.py imports format_timestamp
         # from this module, so a top-level import would be circular.
@@ -180,8 +188,12 @@ class RAGService:
 
         try:
             chunks = await self.vectorstore.list_video_chunks(video_id)
-        except Exception as exc:  # noqa: BLE001 - see _contextualize for the rationale
-            logger.warning("Could not read chunks for %s: %s", video_id, exc)
+        except (OSError, ConnectionError):
+            logger.warning(
+                "Could not read chunks for %s; falling back to retrieval.",
+                video_id,
+                exc_info=True,
+            )
             return None
 
         if not chunks:
@@ -204,15 +216,20 @@ class RAGService:
                 config={"run_name": "video_summary", "tags": ["rag", "summary"]},
             )
             answer = str(response.content).strip()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Summarisation failed for %s: %s", video_id, exc)
+        except Exception as exc:  # noqa: BLE001 - deliberately broad: the call goes to a
+            # third-party provider through LangChain and can raise almost anything
+            # (timeouts, rate limits, provider-specific errors, parsing failures). The
+            # fallback degrades to the retrieval path, so no failure mode is made
+            # worse by catching broadly, and every catch is logged.
+            logger.warning("Summarisation failed for %s: %s", video_id, exc, exc_info=True)
             return None
 
         if not answer:
             logger.warning("Summarisation returned empty text for %s.", video_id)
             return None
 
-        return answer, citations_for_timestamps(extract_timestamps(answer), chunks)
+        citations = citations_for_timestamps(extract_timestamps(answer), chunks)
+        return answer, citations, len(transcript)
 
     @traceable(name="rag_answer", run_type="chain", project_name=settings.langsmith_project)
     async def answer(
@@ -224,10 +241,17 @@ class RAGService:
     ) -> RAGChatResponse:
         answer_start = time.perf_counter()
 
+        # Checked before the summary branch, not only inside prepare_context: without
+        # it, a missing API key would do a full chunk read and a doomed model call
+        # before failing, and log a misleading "Summarisation failed" warning along
+        # the way. Idempotent and identical for narrow questions, since
+        # prepare_context calls it again below.
+        require_chat_credentials(self.config)
+
         if is_broad_question(message) and video_id is not None:
             summary = await self.summarize_video(message=message, video_id=video_id)
             if summary is not None:
-                summary_answer, summary_citations = summary
+                summary_answer, summary_citations, transcript_chars = summary
                 active_session_id = session_id or self.memory.create_session_id()
                 await self._append_exchange(active_session_id, message, summary_answer)
                 messages = await self._get_history(active_session_id)
@@ -241,6 +265,7 @@ class RAGService:
                     generation_ms=(time.perf_counter() - answer_start) * 1000,
                     started_at=answer_start,
                     messages=messages,
+                    context_chars=transcript_chars,
                 )
                 return RAGChatResponse(
                     session_id=active_session_id,
@@ -477,17 +502,38 @@ class RAGService:
         generation_ms: float,
         started_at: float,
         messages: list[ChatMessage],
+        context_chars: int | None = None,
     ) -> None:
+        """Record retrieval/generation metrics for one answer.
+
+        `context_chars` is for the summary path only: `retrieved_context` is
+        deliberately empty there (see `answer`), so the usual token/coverage
+        derivation from it would record the most expensive call - up to
+        `SUMMARY_MAX_CHARS` of transcript in one prompt - as the cheapest.
+        When it is not None it overrides `context_tokens`, and it also
+        switches `citation_coverage` and `hallucination_warning` to be judged
+        against the citations instead of the (empty) retrieved context.
+        """
         total_ms = (time.perf_counter() - started_at) * 1000
         RAG_LATENCY.observe(total_ms / 1000)
-        context_tokens = sum(int(result.metadata.get("token_estimate", 0) or 0) for result in retrieved_context)
-        if not context_tokens:
-            context_tokens = sum(max(1, len(result.text.split()) * 4 // 3) for result in retrieved_context)
-        citation_coverage = (
-            len({citation.chunk_id for citation in citations}) / len({r.chunk_id for r in retrieved_context}) * 100
-            if retrieved_context
-            else 100.0
-        )
+        if context_chars is not None:
+            context_tokens = max(1, context_chars * 4 // 3)
+        else:
+            context_tokens = sum(
+                int(result.metadata.get("token_estimate", 0) or 0) for result in retrieved_context
+            )
+            if not context_tokens:
+                context_tokens = sum(max(1, len(result.text.split()) * 4 // 3) for result in retrieved_context)
+        if context_chars is not None:
+            citation_coverage = 100.0 if citations else 0.0
+        else:
+            citation_coverage = (
+                len({citation.chunk_id for citation in citations})
+                / len({r.chunk_id for r in retrieved_context})
+                * 100
+                if retrieved_context
+                else 100.0
+            )
         followups = max(0, len([m for m in messages if m.role == "user"]) - 1)
         analytics = get_analytics_service()
         await analytics.safe_track(
@@ -503,7 +549,11 @@ class RAGService:
                     prompt_tokens=int(context_tokens + len(message.split()) * 4 // 3),
                     completion_tokens=max(1, len(answer.split()) * 4 // 3),
                     response_length=len(answer),
-                    hallucination_warning=("cannot answer" in answer.lower() and not retrieved_context),
+                    hallucination_warning=(
+                        ("cannot answer" in answer.lower() and not citations)
+                        if context_chars is not None
+                        else ("cannot answer" in answer.lower() and not retrieved_context)
+                    ),
                     metadata_json={"session_id": session_id},
                 )
             )

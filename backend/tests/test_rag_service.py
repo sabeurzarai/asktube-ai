@@ -367,6 +367,21 @@ async def test_broad_question_is_answered_from_the_whole_transcript(monkeypatch)
     # an arbitrary tie-break into the test.
     assert [c.chunk_id for c in response.citations] == ["vid1-0", "vid1-2"]
     assert response.retrieved_context == []
+    # The summary branch must still go through the same side effects as the
+    # retrieval path: a session assigned, and the exchange remembered.
+    assert response.session_id
+    memory_roles_and_content = [(m.role, m.content) for m in response.memory]
+    assert ("user", "What is this video about?") in memory_roles_and_content
+    assert any(
+        role == "assistant" and "Overview" in content for role, content in memory_roles_and_content
+    )
+    user_index = memory_roles_and_content.index(("user", "What is this video about?"))
+    assistant_index = next(
+        i
+        for i, (role, content) in enumerate(memory_roles_and_content)
+        if role == "assistant" and "Overview" in content
+    )
+    assert user_index < assistant_index
 
 
 async def test_narrow_question_still_takes_the_retrieval_path(monkeypatch) -> None:  # noqa: ANN001
@@ -470,3 +485,55 @@ async def test_broad_question_without_a_video_takes_the_retrieval_path(monkeypat
     )
 
     assert service.vectorstore.last_query == "What is this video about?"
+
+
+class RaisingChunksVectorStoreService(CapturingVectorStoreService):
+    """A store whose chunk listing is unreachable, like a connection-level outage."""
+
+    async def list_video_chunks(self, video_id):  # noqa: ANN001
+        raise OSError("connection refused")
+
+
+async def test_summarize_video_returns_none_when_the_store_cannot_be_read() -> None:
+    # Reachable in production whenever the vectorstore backend is down; must degrade
+    # to retrieval like every other summarize_video failure, not raise.
+    service = make_rag_service()
+    service.vectorstore = RaisingChunksVectorStoreService()
+
+    result = await service.summarize_video(message="What is this video about?", video_id="vid1")
+
+    assert result is None
+
+
+async def test_summarize_video_returns_none_when_the_model_answer_is_blank(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model", lambda streaming: FakeListChatModel(responses=["   "])
+    )
+
+    result = await service.summarize_video(message="What is this video about?", video_id="vid1")
+
+    assert result is None
+
+
+async def test_narrow_question_makes_exactly_one_model_call(monkeypatch) -> None:  # noqa: ANN001
+    # The primary constraint of this feature: a narrow question must not pay for a
+    # summarisation attempt that gets thrown away. An implementation that called
+    # summarize_video unconditionally and discarded the result for narrow questions
+    # would pass every other test in this file but fail this one.
+    calls = {"count": 0}
+
+    def counting_model(streaming):  # noqa: ANN001
+        calls["count"] += 1
+        return FakeListChatModel(responses=["a grounded answer"])
+
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(service, "create_chat_model", counting_model)
+
+    await service.answer(
+        message="How do I do addition in Python?", video_id="vid1", session_id=None, top_k=5
+    )
+
+    assert calls["count"] == 1
