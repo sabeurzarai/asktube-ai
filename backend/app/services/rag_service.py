@@ -362,6 +362,47 @@ class RAGService:
         top_k: int,
     ) -> AsyncIterator[RAGStreamEvent]:
         answer_start = time.perf_counter()
+
+        if is_broad_question(message) and video_id is not None:
+            summary = await self.summarize_video(message=message, video_id=video_id)
+            if summary is not None:
+                summary_answer, summary_citations, transcript_chars = summary
+                active_session_id = session_id or self.memory.create_session_id()
+                history = await self._get_history(active_session_id)
+                yield RAGStreamEvent(
+                    type="context",
+                    session_id=active_session_id,
+                    citations=summary_citations,
+                    retrieved_context=[],
+                    memory=history,
+                )
+                yield RAGStreamEvent(
+                    type="token", session_id=active_session_id, token=summary_answer
+                )
+                await self._append_exchange(active_session_id, message, summary_answer)
+                messages = await self._get_history(active_session_id)
+                await self._record_rag_metrics(
+                    message=message,
+                    session_id=active_session_id,
+                    retrieved_context=[],
+                    citations=summary_citations,
+                    answer=summary_answer,
+                    retrieval_ms=0,
+                    generation_ms=(time.perf_counter() - answer_start) * 1000,
+                    started_at=answer_start,
+                    messages=messages,
+                    context_chars=transcript_chars,
+                )
+                yield RAGStreamEvent(
+                    type="done",
+                    session_id=active_session_id,
+                    answer=summary_answer,
+                    citations=summary_citations,
+                    retrieved_context=[],
+                    memory=messages,
+                )
+                return
+
         retrieval_start = time.perf_counter()
         active_session_id, retrieved_context, history = await self.prepare_context(
             message=message,

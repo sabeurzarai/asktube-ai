@@ -648,3 +648,52 @@ async def test_retrieval_metrics_context_tokens_unchanged_without_context_chars(
     # "token_estimate", so this falls back to the words-to-tokens estimate.
     expected_tokens = max(1, len(result.text.split()) * 4 // 3)
     assert metric.context_tokens == expected_tokens
+
+
+# ---------------------------------------------------------------------------
+# Broad questions take the summarisation path in the streaming path too
+# ---------------------------------------------------------------------------
+
+
+async def test_stream_answer_emits_a_summary_as_one_token_event(monkeypatch) -> None:  # noqa: ANN001
+    # The model call is not streamed, so pretending to stream it would only add
+    # machinery. One token event, then done.
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FakeListChatModel(responses=["Overview. [00:00] the start."]),
+    )
+
+    events = [
+        event
+        async for event in service.stream_answer(
+            message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+        )
+    ]
+
+    types = [e.type for e in events]
+    assert types == ["context", "token", "done"]
+    assert events[1].token == "Overview. [00:00] the start."
+    assert events[-1].answer == "Overview. [00:00] the start."
+    assert [c.chunk_id for c in events[-1].citations] == ["vid1-0"]
+    assert events[0].retrieved_context == []
+
+
+async def test_stream_answer_falls_back_to_retrieval_when_summarising_fails(monkeypatch) -> None:  # noqa: ANN001
+    service = make_rag_service()
+    service.vectorstore = ChunkListingVectorStoreService(make_video_chunks())
+    monkeypatch.setattr(
+        service, "create_chat_model",
+        lambda streaming: FailingChatModel(responses=["unused"]),
+    )
+
+    events = [
+        event
+        async for event in service.stream_answer(
+            message="What is this video about?", video_id="vid1", session_id=None, top_k=5
+        )
+    ]
+
+    assert service.vectorstore.last_query == "What is this video about?"
+    assert events[-1].type == "done"
