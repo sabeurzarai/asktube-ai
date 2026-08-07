@@ -42,11 +42,12 @@ class InMemoryVectorStore:
         return [chunk_to_result(chunk, distance) for distance, chunk in scored[:limit]]
 
     async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
-        # Copies, not the stored objects: TranscriptChunk is mutable, so handing
-        # out live references would let a caller corrupt the store. Clearing the
-        # embedding matches pgvector, which never selects that column - the
-        # contract is that both backends return the same thing.
+        # Deep copies, not the stored objects: TranscriptChunk is mutable and its
+        # segment_indices and metadata are a list and a dict, so a shallow copy
+        # would still let a caller mutate the store's internals in place.
+        # Clearing the embedding matches pgvector, which never selects that
+        # column - the contract is that both backends return the same thing.
         return [
-            chunk.model_copy(update={"embedding": None})
+            chunk.model_copy(update={"embedding": None}, deep=True)
             for chunk in sorted(self._by_video.get(video_id, []), key=lambda item: item.index)
         ]

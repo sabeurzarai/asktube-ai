@@ -222,3 +222,17 @@ async def test_list_video_chunks_preserves_timestamps_and_text(store):
     # Pinned deliberately: pgvector never selects the embedding column, so a
     # memory backend that returned it would be a silent cross-backend divergence.
     assert chunk.embedding is None
+
+
+async def test_list_video_chunks_returns_copies_the_caller_cannot_corrupt(store):
+    # The memory backend used to hand out its live stored objects. Mutating a
+    # returned chunk's nested list must not reach back into the store.
+    await store.replace_video_chunks("vid1", [make_chunk("vid1", 0, [1.0, 0.0, 0.0])])
+
+    first = (await store.list_video_chunks("vid1"))[0]
+    first.segment_indices.append(999)
+    first.metadata["source"] = "mutated"
+
+    second = (await store.list_video_chunks("vid1"))[0]
+    assert second.segment_indices == [0]
+    assert second.metadata.get("source") == "captions"
