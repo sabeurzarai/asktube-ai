@@ -141,6 +141,41 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   in `routes/chunks.py` and `routes/vectorstore.py`); they now read
   `settings.chunk_max_chars`, and `test_tools.py` asserts against the setting
   rather than a literal so the regression cannot return silently.
+- Summarisation path: a **broad** question ("what is this video about?") does not
+  go through retrieval. `is_broad_question` in
+  `backend/app/services/question_kind.py` classifies it with a **pure pattern
+  match — no model call**, deliberately: an LLM classifier would be
+  non-deterministic, would add latency to every request, and would break the
+  documented guarantee that a first turn makes no model call (broad questions
+  are usually first turns). The cost is that only phrasings someone listed are
+  recognised; a miss falls through to retrieval, which is the old behaviour, so
+  it is never a regression.
+  `RAGService.summarize_video` then reads EVERY chunk via the vector store's
+  `list_video_chunks`, rebuilds a timestamped transcript and makes **one** chat
+  call. Timestamps in the answer are validated against real chunks before
+  becoming citations — an invented mark is logged and dropped rather than
+  asserted as a source.
+  **It degrades, it does not fail**: no chunks, a transcript over
+  `SUMMARY_MAX_CHARS` (40,000), a failed or empty model call — each returns
+  `None` and the question is answered by retrieval instead.
+  `retrieved_context` comes back **empty** on this path, because no chunk
+  selection happened. Do not "fix" that by listing the chunks that fed the
+  summary.
+  The regression guard is free and already written:
+  `test_no_content_case_is_classified_as_broad` asserts that none of the 26
+  content cases in the retrieval fixture classify as broad.
+  Known limits: timestamp **validity** is not timestamp **correctness** — a mark
+  can be inside the video and match a chunk while still pointing at the wrong
+  moment. And whether a summary is *good* is not measured at all; there is no
+  ground truth for it, and inventing a number would produce something that looks
+  like evidence and is not.
+  Because the branch lives inside `RAGService.answer()`, the agent path
+  (`agent_service._answer_via_rag`) and the `answer_question` tool inherit this
+  behaviour for free — no separate agent-path wiring was added or is needed.
+  This was **verified, not assumed**: both call sites consume only `answer`,
+  `citations` and `session_id` from the response, nothing reads
+  `retrieved_context`, and the frontend never references `retrieved_context` at
+  all, so the empty context on this path is harmless everywhere it is consumed.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
   scores 29 conversation cases across **two videos** in
   `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.
@@ -205,10 +240,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **221 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **275 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **217 passed, 5
+  local-embedding tests skip instead of running, giving **271 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`
