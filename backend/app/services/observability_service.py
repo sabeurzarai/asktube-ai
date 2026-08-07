@@ -150,12 +150,41 @@ def evaluate_response_quality(
     latency_budget_ms: int,
     hallucination_threshold: float,
 ) -> EvaluationMetrics:
-    context_text = " ".join(result.text for result in response.retrieved_context)
-    citation_quality = evaluate_citations(response.citations, response.retrieved_context)
+    # The summarisation path (RAGService.answer/stream_answer, broad questions)
+    # returns a deliberately EMPTY retrieved_context - no chunk selection took
+    # place, so there is nothing to join into context_text or to score
+    # citations against. Scoring that as "no context" judged every summary
+    # answer as ungrounded (groundedness 0.0, hallucination_risk 1.0) and every
+    # one of its real citations as uncited (has_citations False despite
+    # citation_count > 0). This mirrors the principle `_record_rag_metrics`
+    # already applies for the same path (see rag_service.py, context_chars):
+    # when retrieved_context is empty but citations were still produced, judge
+    # against the citations instead - they are timestamps the model claimed
+    # and that were validated against real chunks, so they are the only
+    # grounding evidence this path has.
+    if response.retrieved_context:
+        context_for_citations = response.retrieved_context
+    else:
+        context_for_citations = [
+            VectorSearchResult(
+                chunk_id=citation.chunk_id,
+                video_id=citation.video_id,
+                text=citation.text,
+                start_seconds=citation.start_seconds,
+                end_seconds=citation.end_seconds,
+                segment_indices=[],
+                distance=None,
+                metadata={},
+            )
+            for citation in response.citations
+        ]
+
+    context_text = " ".join(result.text for result in context_for_citations)
+    citation_quality = evaluate_citations(response.citations, context_for_citations)
     unsupported_claims = find_unsupported_claims(response.answer, context_text)
     groundedness_score = calculate_groundedness(response.answer, context_text)
     answer_refusal = is_transcript_refusal(response.answer)
-    no_context = not response.retrieved_context
+    no_context = not context_for_citations
 
     if no_context and answer_refusal:
         hallucination_risk = 0.0
