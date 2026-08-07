@@ -91,8 +91,27 @@ def citations_for_timestamps(
 ) -> list[TimestampCitation]:
     """Turn claimed timestamps into citations, dropping the ones that are not real.
 
-    A model can emit a timestamp that exists nowhere in the video. Attaching a
-    citation object to it would assert a source that does not exist, which is
+    Matching happens in two steps, and the order matters:
+
+    1. Exact display match. rebuild_transcript labels each chunk with
+       format_timestamp(chunk.start_seconds), and SUMMARY_PROMPT tells the model
+       to copy that label EXACTLY. format_timestamp TRUNCATES to whole seconds,
+       so a chunk starting at 70.56s is shown as "01:10" - a model that complies
+       writes "01:10", which extract_timestamps parses back to 70.0, not 70.56.
+       Plain range containment (chunk.start_seconds <= 70.0) is then False for
+       the very chunk that displayed the label, which is the defect this method
+       fixes: comparing the claimed mark's OWN displayed form against each
+       chunk's displayed form attributes it correctly regardless of truncation.
+       It also resolves overlap correctly: chunks share one segment at each
+       boundary (overlap_segments=1), so a later chunk's start can fall inside
+       an earlier chunk's range, and range containment alone would credit the
+       wrong chunk for a label that only the later one actually showed.
+    2. Range containment, as a fallback, for marks the model took from inside a
+       section rather than copied from its label - those never had a display
+       match to begin with.
+
+    A model can also emit a timestamp that exists nowhere in the video. Attaching
+    a citation object to it would assert a source that does not exist, which is
     worse than having no citation at all - so an unmatched mark is logged and
     discarded.
     """
@@ -104,9 +123,14 @@ def citations_for_timestamps(
     seen_chunks: set[str] = set()
 
     for timestamp in timestamps:
+        display = format_timestamp(timestamp)
         match = next(
-            (c for c in ordered if c.start_seconds <= timestamp <= c.end_seconds), None
+            (c for c in ordered if format_timestamp(c.start_seconds) == display), None
         )
+        if match is None:
+            match = next(
+                (c for c in ordered if c.start_seconds <= timestamp <= c.end_seconds), None
+            )
         if match is None:
             logger.warning(
                 "Summary claimed timestamp %s, which matches no chunk of the video; "

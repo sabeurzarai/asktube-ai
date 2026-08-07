@@ -95,3 +95,30 @@ def test_citations_deduplicate_repeated_chunks() -> None:
 
 def test_citations_of_nothing_is_empty() -> None:
     assert citations_for_timestamps([12.0], []) == []
+
+
+def test_citations_match_a_fractional_chunk_start_by_displayed_label() -> None:
+    # chunk.start_seconds=70.56 displays as "01:10" (format_timestamp truncates).
+    # A model copying that label writes "01:10", which extract_timestamps parses
+    # back to 70.0 - not 70.56. Plain range containment (70.56 <= 70.0) is False,
+    # so this only passes when the exact-display match runs first.
+    chunks = [make_chunk(0, "content", 70.56, 130.0, [0])]
+
+    citations = citations_for_timestamps([70.0], chunks)
+
+    assert [c.chunk_id for c in citations] == ["vid-0"]
+
+
+def test_citations_prefer_exact_display_match_over_overlapping_range() -> None:
+    # Chunks overlap by one segment: chunk A spans 0.16-74.0 (displays "00:00")
+    # and chunk B spans 70.56-130.0 (displays "01:10"). The mark 70.0 ("01:10")
+    # falls inside BOTH ranges, but it was copied from B's label, so it must
+    # cite B - not A, which plain range containment would pick first.
+    chunks = [
+        make_chunk(0, "a content", 0.16, 74.0, [0, 1]),
+        make_chunk(1, "b content", 70.56, 130.0, [1, 2]),
+    ]
+
+    citations = citations_for_timestamps([70.0], chunks)
+
+    assert [c.chunk_id for c in citations] == ["vid-1"]
