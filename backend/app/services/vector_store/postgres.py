@@ -138,3 +138,43 @@ class PgVectorStore:
             )
             for row in rows
         ]
+
+    async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
+        # `embedding` is deliberately not selected: the caller wants text and
+        # timestamps, and a whole video's worth of 1536-float vectors would be
+        # transferred and parsed for nothing.
+        statement = text(
+            "select chunk_id, video_id, chunk_index, text, start_seconds, "
+            "       end_seconds, segment_indices, token_estimate, source, language "
+            "from transcript_chunks "
+            "where video_id = :video_id "
+            "order by chunk_index asc"
+        )
+
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(statement, {"video_id": video_id})
+            ).mappings().all()
+
+        return [
+            TranscriptChunk(
+                chunk_id=row["chunk_id"],
+                index=row["chunk_index"],
+                video_id=row["video_id"],
+                text=row["text"],
+                start_seconds=row["start_seconds"],
+                end_seconds=row["end_seconds"],
+                segment_indices=list(row["segment_indices"] or []),
+                token_estimate=row["token_estimate"] or 0,
+                metadata={
+                    key: value
+                    for key, value in (
+                        ("source", row["source"]),
+                        ("language", row["language"]),
+                    )
+                    if value is not None
+                },
+                embedding=None,
+            )
+            for row in rows
+        ]

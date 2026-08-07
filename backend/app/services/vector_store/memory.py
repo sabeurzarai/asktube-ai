@@ -40,3 +40,6 @@ class InMemoryVectorStore:
         scored.sort(key=lambda pair: pair[0])
 
         return [chunk_to_result(chunk, distance) for distance, chunk in scored[:limit]]
+
+    async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
+        return sorted(self._by_video.get(video_id, []), key=lambda chunk: chunk.index)

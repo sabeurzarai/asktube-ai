@@ -35,6 +35,19 @@ class VectorStore(Protocol):
         """Return the closest chunks by cosine distance, nearest first."""
         ...
 
+    async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
+        """Every stored chunk of one video, ordered by index ascending.
+
+        Returns an empty list for a video that was never ingested - an ordinary
+        state, not an error, since the summarisation path falls through quietly
+        when it gets nothing.
+
+        Unlike similarity_search this carries no embeddings in the result: the
+        caller wants text and timestamps, and shipping 1536 floats per chunk
+        across the wire for a whole video would be pure waste.
+        """
+        ...
+
 
 def cosine_distance(a: list[float], b: list[float]) -> float:
     """Cosine distance in pure Python: 1 - cosine_similarity.

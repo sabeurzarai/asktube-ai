@@ -105,6 +105,13 @@ class VectorStoreService:
         )
         return results
 
+    async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
+        """Every chunk of one video, for callers that need the whole transcript.
+
+        No embedding step, so unlike similarity_search this needs no credentials.
+        """
+        return await self.store.list_video_chunks(video_id)
+
 
 @lru_cache
 def get_vectorstore_service() -> VectorStoreService:
