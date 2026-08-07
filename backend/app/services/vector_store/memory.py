@@ -42,4 +42,11 @@ class InMemoryVectorStore:
         return [chunk_to_result(chunk, distance) for distance, chunk in scored[:limit]]
 
     async def list_video_chunks(self, video_id: str) -> list[TranscriptChunk]:
-        return sorted(self._by_video.get(video_id, []), key=lambda chunk: chunk.index)
+        # Copies, not the stored objects: TranscriptChunk is mutable, so handing
+        # out live references would let a caller corrupt the store. Clearing the
+        # embedding matches pgvector, which never selects that column - the
+        # contract is that both backends return the same thing.
+        return [
+            chunk.model_copy(update={"embedding": None})
+            for chunk in sorted(self._by_video.get(video_id, []), key=lambda item: item.index)
+        ]

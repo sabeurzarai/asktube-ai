@@ -219,3 +219,6 @@ async def test_list_video_chunks_preserves_timestamps_and_text(store):
     assert chunk.start_seconds == 30.0
     assert chunk.end_seconds == 40.0
     assert chunk.segment_indices == [3]
+    # Pinned deliberately: pgvector never selects the embedding column, so a
+    # memory backend that returned it would be a silent cross-backend divergence.
+    assert chunk.embedding is None
