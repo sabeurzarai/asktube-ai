@@ -330,6 +330,13 @@ This section maps AskTube AI's implementation to the IronHack final-project grad
 ### Chatbot with LLM
 The `/api/chat` endpoint accepts a user question and a YouTube video ID, retrieves relevant transcript chunks from the pgvector store via RAG, and generates a grounded answer using OpenAI GPT-4o-mini through LangChain's `ChatOpenAI`. Every answer includes timestamped citations so the user can verify the source.
 
+### Whole-video summaries for broad questions
+A question like *"what is this video about?"* asks about the whole, not a passage, and top-k retrieval answers it badly by construction — it picks five chunks and hopes they represent ten minutes of video. Measured, this shows up as the weakest similarity score of any on-topic question.
+
+Such questions therefore skip retrieval. `is_broad_question` recognises them with a **pure pattern match and no model call** — deliberately, because an LLM classifier would be non-deterministic, would add latency to every request, and would break the guarantee that a first turn costs no extra call. Phrasings nobody listed simply fall through to normal retrieval, which is the previous behaviour, so a miss is never a regression. English and German phrasings are both recognised.
+
+`summarize_video` then reads *every* chunk of the video, rebuilds a timestamped transcript, and makes **one** model call. Timestamps in the answer are validated against the real chunks before becoming citations, so a mark the model invented is dropped rather than presented as a source. The whole path degrades rather than fails: no chunks, a transcript over 40,000 characters, or a failed model call each send the question back to ordinary retrieval.
+
 ### LangChain Tools / Tool-calling Agent
 Seven `StructuredTool` objects live in `backend/app/tools/`: `search_youtube_videos`, `extract_transcript`, `chunk_transcript`, `store_video_vectors`, `ingest_video`, `retrieve_context`, and `answer_question`. `AgentService` (in `agent_service.py`) binds these tools to the LLM via `bind_tools()` and runs a tool-calling loop: the model decides which tools to call, the agent executes them, and the results are fed back until a final answer is produced. This is exposed through the dedicated `POST /api/agent/chat` route.
 

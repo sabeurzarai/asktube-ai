@@ -118,19 +118,25 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   The hardened set, run frozen, is deterministic — two consecutive sweeps are
   bit-identical — and on the FIRST video alone it appeared to confirm 600 (18/18
   against 17/18 everywhere else).
-  **Adding the second video withdrew that confirmation, and the withdrawal is the
-  more useful result**: across 29 cases and two videos, 600 and 1200 tie at 28/29,
-  450 and 900 score 27/29. Hit rate does not separate 600 from 1200. Do not cite
-  it as evidence for the default; the justification remains the context share
-  (600: 29%/20% of each video, 1200: 53%/41%) and the normalised rank, both of
-  which are arithmetic rather than case-set-dependent. This is exactly the
-  over-claim a single video invites, and the reason the second one was added.
-  Which cases fail still carries signal: `first-power` (vocabulary mismatch)
-  fails only at 1200, where the coarse chunk dilutes the passage; `vague-branches`
-  fails at 450 and 900. `bio-vague-first` fails at every size except 1200 and is a
-  known-weak case — "and what happens first?" is arguably answered by the overview
-  passage too, so its expectation may be over-specified. It is kept because a
-  consistently failing case is informative as long as nobody mistakes it for noise.
+  Adding the second video WITHDREW that confirmation for a while — 600 and 1200
+  tied at 28/29 — and that withdrawal was the more useful result at the time,
+  because it exposed an over-claim drawn from a single video.
+  **The tie has since been resolved, and not by tuning:** `bio-vague-first` was
+  found to be demanding worse behaviour than the system produced. Its history said
+  only that photosynthesis has two kinds of reactions, so "and what happens first?"
+  could mean the first stage or the first event inside it; the rewrite chose the
+  former and retrieval correctly returned the overview passage at rank 1. The case
+  was under-anchored, not the retrieval wrong. With the history naming the
+  light-dependent reactions, the current picture is **600: 29/29, 450 and 1200:
+  28/29, 900: 27/29** — 600 is the only size with a clean sweep.
+  Read that carefully: the retarget was decided from a rank-1 result at 600 alone,
+  with no reference to the other sizes, so 600's improved score is a consequence
+  rather than the motive. The primary justification for the default is still the
+  **context share** (600: 29%/20% of each video, 1200: 53%/41%) and the normalised
+  rank, both arithmetic and independent of any case set.
+  Which cases fail still carries signal: `first-power` (vocabulary mismatch) fails
+  only at 1200, where the coarse chunk dilutes the passage; `vague-branches` fails
+  at 450 and 900.
   `scripts/sweep_chunk_size.py` re-runs the comparison; it reports normalised rank
   and context share because raw mean rank is not comparable across chunk counts.
   **Already-ingested videos keep their old chunks** until re-ingested — the store

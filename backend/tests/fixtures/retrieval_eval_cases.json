@@ -429,17 +429,17 @@
       "history": [
         {
           "role": "user",
-          "content": "What are the two kinds of reactions in photosynthesis?"
+          "content": "What are the light-dependent reactions?"
         },
         {
           "role": "assistant",
-          "content": "Light-dependent reactions and the light-independent Calvin cycle."
+          "content": "They are stage one of photosynthesis, and they happen in the thylakoid membrane."
         }
       ],
       "question": "and what happens first?",
-      "search_query": "What happens first in the two kinds of reactions in photosynthesis?",
+      "search_query": "What happens first in the light-dependent reactions of photosynthesis?",
       "expect_chunk_containing": "photoexcitation",
-      "guards": "Second video's counterpart to vague-next. Here the history DOES contain enough to resolve the reference, unlike vague-next."
+      "guards": "Second video's counterpart to vague-next: a vague follow-up whose reference the history CAN resolve. Retargeted on 2026-08-07 after it failed at every chunk size except 1200. The failure was not over-specification, as first suspected, but UNDER-ANCHORING: the earlier history said only that photosynthesis has two kinds of reactions, so 'first' could mean either the first stage or the first event within it. The rewrite chose the former and retrieval correctly returned the overview passage at rank 1 - the fixture was demanding worse behaviour than the system produced. The history now names the light-dependent reactions, so 'first' resolves to the first event inside them, and photoexcitation is reachable at rank 2. Keep the question vague; anchoring belongs in the history, which is what this case kind exists to test."
     },
     {
       "id": "bio-vague-called",
