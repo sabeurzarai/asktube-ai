@@ -15,12 +15,9 @@ from app.services.transcript_service import (
 )
 
 
-@pytest.mark.asyncio
-async def test_blocked_transcript_request_returns_502_not_500() -> None:
-    """YouTube blocking a datacenter IP raises CouldNotRetrieveTranscript
-    subclasses (RequestBlocked/IpBlocked); these must surface as a clean 502
-    with a proxy hint, not escape as an unhandled 500."""
-    service = TranscriptService(Settings(_env_file=None))
+async def blocked_detail(config: Settings) -> str:
+    """The 502 detail produced when YouTube refuses the request."""
+    service = TranscriptService(config)
 
     with patch.object(
         TranscriptService,
@@ -31,7 +28,37 @@ async def test_blocked_transcript_request_returns_502_not_500() -> None:
             await service.get_transcript("vid123", TranscriptFetchOptions())
 
     assert excinfo.value.status_code == 502
-    assert "WEBSHARE_PROXY" in excinfo.value.detail
+    return excinfo.value.detail
+
+
+@pytest.mark.asyncio
+async def test_blocked_request_without_a_proxy_says_to_configure_one() -> None:
+    """YouTube blocking a datacenter IP raises CouldNotRetrieveTranscript
+    subclasses (RequestBlocked/IpBlocked); these must surface as a clean 502,
+    not escape as an unhandled 500."""
+    detail = await blocked_detail(Settings(_env_file=None))
+
+    assert "WEBSHARE_PROXY_URL" in detail
+    assert "no residential proxy is configured" in detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_blocked_request_WITH_a_proxy_does_not_tell_you_to_configure_one() -> None:
+    """The message must not assert a cause it has not checked.
+
+    A configured proxy whose exit IP is ALSO blocked produces the identical
+    exception, and the old message told the operator to configure a proxy that
+    was already configured - advice that cannot work, on a diagnosis nobody
+    made. This happened in production on 2026-08-07 and cost real time.
+    """
+    detail = await blocked_detail(
+        Settings(_env_file=None, webshare_proxy_url="http://user:pass@p.webshare.io:80")
+    )
+
+    assert "no residential proxy is configured" not in detail.lower()
+    assert "rotate" in detail.lower()
+    # Retrying unchanged is precisely what does not help here; say so.
+    assert "retry" in detail.lower()
 
 
 def test_normalize_youtube_segments() -> None:

@@ -57,14 +57,35 @@ class TranscriptService:
             # CORS headers, so browsers surfaced it as an opaque network error.
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "YouTube refused the transcript request from this server "
-                    "(datacenter IPs are frequently blocked). Configure the "
-                    "WEBSHARE_PROXY_USERNAME/WEBSHARE_PROXY_PASSWORD environment "
-                    "variables to route transcript requests through a residential "
-                    "proxy, then retry."
-                ),
+                detail=self._blocked_detail(),
             ) from exc
+
+    def _blocked_detail(self) -> str:
+        """Explain the block without asserting a cause that was never checked.
+
+        The two situations produce the SAME exception and need opposite advice.
+        Until 2026-08-07 this message always said "configure a proxy" - so when
+        a configured proxy's own exit IP got blocked, it told the operator to do
+        something already done, and to retry, which could not help. The message
+        has to know which case it is in.
+        """
+        if self._build_youtube_proxy_config() is None:
+            return (
+                "YouTube refused the transcript request from this server "
+                "(datacenter IPs are frequently blocked), and no residential proxy "
+                "is configured. Set WEBSHARE_PROXY_URL (or the "
+                "WEBSHARE_PROXY_USERNAME/WEBSHARE_PROXY_PASSWORD pair) to route "
+                "transcript requests through one, then retry."
+            )
+
+        return (
+            "YouTube refused the transcript request even through the configured "
+            "residential proxy - its exit IP is blocked too, so this is not a "
+            "configuration problem and an unchanged retry will fail the same way. "
+            "Rotate the proxy's IPs (or switch pool) and update WEBSHARE_PROXY_URL, "
+            "or wait: these blocks are often temporary. Videos already ingested are "
+            "unaffected - they are served from the database and never touch YouTube."
+        )
 
     def _fetch_youtube_transcript(self, video_id: str, language: str) -> TranscriptResponse:
         # youtube-transcript-api v1.x: instantiate the API, use .list() instead of .list_transcripts()
