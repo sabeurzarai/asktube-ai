@@ -199,6 +199,23 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `citations` is not, `evaluate_response_quality` derives the context text and
   the citation evaluation from the citations instead, mirroring the same
   principle `_record_rag_metrics` already applies via `context_chars`.
+- Ingest resilience: a blocked transcript request is **retried up to
+  `_BLOCK_RETRY_ATTEMPTS` (3) times, but only when a proxy is configured**
+  (`TranscriptService._fetch_with_block_retries`). A rotating Webshare username
+  (`-rotate`, not a pinned `-DE-1`) draws a NEW exit IP per request, so a block is
+  a property of one attempt: measured live, 5 of 6 identical ingests succeeded.
+  Without a proxy every attempt leaves from the same IP, so retrying is a
+  guaranteed-identical failure paid for in latency — hence the guard. The 502
+  message distinguishes "no proxy configured" from "configured and still
+  refused", because those need opposite actions and used to get the same advice.
+- Agent video binding: `_build_system_prompt` **forbids** `search_youtube_videos`
+  when a `video_id` is supplied, rather than merely asking the agent to "focus"
+  on it. The soft wording did not hold: asked a specific question about an
+  ingested video, the agent searched YouTube, ingested a DIFFERENT video and
+  answered from that one, reporting "no relevant context" — while the same
+  question through `/api/chat` answered correctly. It also wrote an unrequested
+  video into the production store. Note that the frontend workspace calls
+  `/api/agent/chat`, NOT `/api/chat`, so this path is the one users actually hit.
 - Retrieval measurement: `cd backend && python scripts/run_retrieval_eval.py`
   scores 29 conversation cases across **two videos** in
   `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.

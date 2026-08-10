@@ -413,3 +413,44 @@ def test_nvidia_without_api_key_raises_503() -> None:
     except HTTPException as exc:
         assert exc.status_code == 503
         assert "NVIDIA_API_KEY" in exc.detail
+
+
+# ---------------------------------------------------------------------------
+# The agent must stay on the video the user is looking at
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_forbids_searching_when_a_video_is_given() -> None:
+    """Observed live on 2026-08-07: asked "How do I do addition in Python?"
+    about an ingested video, the agent called search_youtube_videos, ingested a
+    DIFFERENT video it found, answered from that one, found nothing, and gave up
+    with "no relevant context". The same question through /api/chat answered
+    correctly from five chunks.
+
+    The cause was emphasis: the WORKFLOW block advertises the search path, while
+    the video binding was a soft afterthought ("Focus on this video."). It also
+    wrote an unrequested video into the production store. The instruction has to
+    forbid the search outright, not merely suggest a focus.
+    """
+    from app.services.agent_service import _build_system_prompt
+
+    prompt = _build_system_prompt("fWjsdhR3z3c")
+
+    assert "fWjsdhR3z3c" in prompt
+    lowered = prompt.lower()
+    assert "never" in lowered
+    assert "search_youtube_videos" in prompt
+    # The prohibition and the tool name belong in the same sentence, or the
+    # model reads them as unrelated.
+    sentence = next(s for s in prompt.split(".") if "search_youtube_videos" in s and "ever" in s.lower())
+    assert "fWjsdhR3z3c" in sentence or "this video" in sentence.lower()
+
+
+def test_system_prompt_without_a_video_still_allows_searching() -> None:
+    """With no video to stay on, searching is the correct first step - the
+    prohibition must not leak into that case."""
+    from app.services.agent_service import _build_system_prompt
+
+    prompt = _build_system_prompt(None)
+
+    assert "never call search_youtube_videos" not in prompt.lower()

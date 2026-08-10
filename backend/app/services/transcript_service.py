@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -7,7 +8,9 @@ from fastapi import HTTPException, status
 from openai import AsyncOpenAI, OpenAIError
 from youtube_transcript_api import (
     CouldNotRetrieveTranscript,
+    IpBlocked,
     NoTranscriptFound,
+    RequestBlocked,
     TranscriptsDisabled,
     YouTubeTranscriptApi,
 )
@@ -19,6 +22,13 @@ from app.schemas.transcript import TranscriptResponse, TranscriptSegment
 
 
 YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v={video_id}"
+
+logger = logging.getLogger(__name__)
+
+# Blocks are per-attempt with a rotating proxy, so a few retries convert a
+# measured ~83% success rate into near-certainty. Only applied when a proxy is
+# configured - see _fetch_with_block_retries.
+_BLOCK_RETRY_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -37,11 +47,7 @@ class TranscriptService:
         options: TranscriptFetchOptions,
     ) -> TranscriptResponse:
         try:
-            return await asyncio.to_thread(
-                self._fetch_youtube_transcript,
-                video_id,
-                options.language,
-            )
+            return await self._fetch_with_block_retries(video_id, options.language)
         except (NoTranscriptFound, TranscriptsDisabled):
             if not options.use_whisper_fallback:
                 raise HTTPException(
@@ -59,6 +65,40 @@ class TranscriptService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=self._blocked_detail(),
             ) from exc
+
+    async def _fetch_with_block_retries(self, video_id: str, language: str) -> TranscriptResponse:
+        """Fetch the transcript, retrying a block only when a retry can differ.
+
+        A rotating residential proxy draws a NEW exit IP per request, so a block
+        is a property of one attempt rather than of the request: measured live on
+        2026-08-07, 5 of 6 identical ingests succeeded while the sixth hit a
+        flagged IP. Retrying turns that into near-certainty and costs nothing
+        when the first attempt works.
+
+        Without a proxy every attempt leaves from the same address, so a retry is
+        a guaranteed-identical failure paid for in latency - hence the guard.
+        Only block errors are retried; a missing caption track or a disabled
+        transcript is not going to change between attempts.
+        """
+        attempts = _BLOCK_RETRY_ATTEMPTS if self._build_youtube_proxy_config() else 1
+
+        for attempt in range(1, attempts + 1):
+            try:
+                return await asyncio.to_thread(
+                    self._fetch_youtube_transcript, video_id, language
+                )
+            except (RequestBlocked, IpBlocked):
+                if attempt == attempts:
+                    raise
+                logger.warning(
+                    "Transcript request for %s was blocked on attempt %d of %d; "
+                    "retrying to draw a different proxy exit IP.",
+                    video_id,
+                    attempt,
+                    attempts,
+                )
+
+        raise AssertionError("unreachable: the loop either returns or raises")
 
     def _blocked_detail(self) -> str:
         """Explain the block without asserting a cause that was never checked.
@@ -80,11 +120,14 @@ class TranscriptService:
 
         return (
             "YouTube refused the transcript request even through the configured "
-            "residential proxy - its exit IP is blocked too, so this is not a "
-            "configuration problem and an unchanged retry will fail the same way. "
-            "Rotate the proxy's IPs (or switch pool) and update WEBSHARE_PROXY_URL, "
-            "or wait: these blocks are often temporary. Videos already ingested are "
-            "unaffected - they are served from the database and never touch YouTube."
+            f"residential proxy, on all {_BLOCK_RETRY_ATTEMPTS} attempts - so this is not a "
+            "configuration problem. If the proxy username rotates (a '-rotate' "
+            "suffix rather than a pinned '-DE-1'), each attempt already used a "
+            "different exit IP, so the pool is broadly flagged: switch pool or wait, "
+            "as these blocks are usually temporary. If it does NOT rotate, switch it "
+            "to '-rotate' in WEBSHARE_PROXY_URL - one pinned IP is one ban away from "
+            "an outage. Videos already ingested are unaffected: they are served from "
+            "the database and never touch YouTube."
         )
 
     def _fetch_youtube_transcript(self, video_id: str, language: str) -> TranscriptResponse:

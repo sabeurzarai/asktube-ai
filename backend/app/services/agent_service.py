@@ -287,9 +287,24 @@ class AgentService:
 
 
 def _build_system_prompt(video_id: str | None) -> str:
+    """Build the agent's instructions, binding it to a video when one is given.
+
+    The binding is a prohibition rather than a preference on purpose. It used to
+    read "Focus on this video", and the model did not treat that as binding: asked
+    a specific question about an already-ingested video, it called
+    search_youtube_videos anyway, ingested a different video it liked better,
+    answered from that one and reported "no relevant context". Two costs, not one
+    - a wrong answer, and an unrequested video written into the vector store.
+    """
     prompt = _SYSTEM_PROMPT
     if video_id:
-        prompt += f"\n\nThe user is asking about video_id: {video_id}. Focus on this video."
+        prompt += (
+            f"\n\nThe user is looking at video_id {video_id}, so answer ONLY from "
+            f"{video_id} and never call search_youtube_videos, and never ingest or "
+            f"answer from any other video, even if this one seems not to cover the "
+            f"question. If {video_id} does not answer it, say so - that is a correct "
+            f"answer, whereas answering from a video the user is not watching is not."
+        )
     return prompt
 
 

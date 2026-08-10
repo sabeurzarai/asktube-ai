@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from youtube_transcript_api import CouldNotRetrieveTranscript
+from youtube_transcript_api import CouldNotRetrieveTranscript, IpBlocked, RequestBlocked
 
 from app.core.config import Settings
 from app.services.transcript_service import (
@@ -43,6 +43,51 @@ async def test_blocked_request_without_a_proxy_says_to_configure_one() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_block_is_retried_when_a_rotating_proxy_can_draw_a_new_ip() -> None:
+    """Measured on 2026-08-07: with WEBSHARE_PROXY_URL on a `-rotate` username,
+    5 of 6 live ingests succeeded - each request leaves through a different exit
+    IP, so a block is a property of one attempt, not of the request. Retrying is
+    the difference between ~83% and ~99% success, and it costs nothing when the
+    first attempt works."""
+    calls = {"n": 0}
+
+    def blocked_once_then_fine(self, video_id, language):  # noqa: ANN001, ARG001
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise IpBlocked(video_id)
+        return "the transcript"
+
+    service = TranscriptService(
+        Settings(_env_file=None, webshare_proxy_url="http://user:pass@p.webshare.io:80")
+    )
+
+    with patch.object(TranscriptService, "_fetch_youtube_transcript", blocked_once_then_fine):
+        result = await service.get_transcript("vid123", TranscriptFetchOptions())
+
+    assert result == "the transcript"
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_block_is_NOT_retried_without_a_proxy() -> None:
+    """Without a proxy every attempt leaves from the same IP, so a retry is a
+    guaranteed-identical failure paid for in latency."""
+    calls = {"n": 0}
+
+    def always_blocked(self, video_id, language):  # noqa: ANN001, ARG001
+        calls["n"] += 1
+        raise RequestBlocked(video_id)
+
+    service = TranscriptService(Settings(_env_file=None))
+
+    with patch.object(TranscriptService, "_fetch_youtube_transcript", always_blocked):
+        with pytest.raises(HTTPException):
+            await service.get_transcript("vid123", TranscriptFetchOptions())
+
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_blocked_request_WITH_a_proxy_does_not_tell_you_to_configure_one() -> None:
     """The message must not assert a cause it has not checked.
 
@@ -57,8 +102,9 @@ async def test_blocked_request_WITH_a_proxy_does_not_tell_you_to_configure_one()
 
     assert "no residential proxy is configured" not in detail.lower()
     assert "rotate" in detail.lower()
-    # Retrying unchanged is precisely what does not help here; say so.
-    assert "retry" in detail.lower()
+    # It must NOT claim a retry is pointless: with a rotating proxy each
+    # attempt draws a new exit IP, which is why the service retries at all.
+    assert "will fail the same way" not in detail.lower()
 
 
 def test_normalize_youtube_segments() -> None:
