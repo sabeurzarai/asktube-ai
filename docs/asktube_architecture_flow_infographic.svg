@@ -48,7 +48,7 @@
   <rect x="0" y="0" width="1600" height="1080" fill="#111827" opacity="0.18"/>
 
   <text x="800" y="70" class="title" text-anchor="middle">AskTube AI Architecture</text>
-  <text x="800" y="106" class="subtitle" text-anchor="middle">Search YouTube videos, ingest transcripts into ChromaDB, then chat with grounded timestamp citations</text>
+  <text x="800" y="106" class="subtitle" text-anchor="middle">Search YouTube videos, ingest transcripts into pgvector, then chat with grounded timestamp citations</text>
 
   <!-- Lanes -->
   <rect x="28" y="158" width="1544" height="374" rx="22" class="lane"/>
@@ -109,7 +109,7 @@
 
   <line x1="1087" y1="485" x2="1368" y2="485" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
   <circle cx="1460" cy="485" r="72" fill="#fde047" stroke="#eab308" stroke-width="4" filter="url(#softShadow)"/>
-  <text x="1460" y="477" class="yellowText" text-anchor="middle">ChromaDB</text>
+  <text x="1460" y="477" class="yellowText" text-anchor="middle">pgvector</text>
   <text x="1460" y="508" class="yellowText" text-anchor="middle">Vectors</text>
   <text x="1460" y="558" class="caption" text-anchor="middle">collection: asktube_videos</text>
 
@@ -163,7 +163,7 @@
   <text x="458" y="989" class="chipText" text-anchor="middle">Render FastAPI</text>
 
   <rect x="608" y="954" width="276" height="54" rx="12" class="chip"/>
-  <text x="746" y="989" class="chipText" text-anchor="middle">Embedded Chroma free tier</text>
+  <text x="746" y="989" class="chipText" text-anchor="middle">Postgres + pgvector</text>
 
   <rect x="910" y="954" width="222" height="54" rx="12" class="chip"/>
   <text x="1021" y="989" class="chipText" text-anchor="middle">Analytics SQLite</text>
