@@ -167,7 +167,7 @@ cd backend
 python scripts/run_evaluation.py
 ```
 
-**Prerequisites:** Video `kqtD5dpn9C8` must be ingested in ChromaDB first (`POST /api/videos/kqtD5dpn9C8/ingest`). `OPENAI_API_KEY` must be set.
+**Prerequisites:** Video `kqtD5dpn9C8` must be ingested into the vector store first (`POST /api/videos/kqtD5dpn9C8/ingest`). `OPENAI_API_KEY` must be set.
 
 **Exit codes:** `0` = all cases pass or warn, `1` = at least one hard FAIL (wrong behavior, forbidden hallucinated term, or missing expected content).
 

@@ -107,7 +107,7 @@ The following policy applies unconditionally:
 
 - Audio files, video files, and raw transcript text are **never committed** to the Git repository.
 - `.gitignore` excludes `*.mp3`, `*.m4a`, `*.webm`, `*.wav`, `data/`, and `audio_cache/`.
-- ChromaDB vector data (embeddings) is stored in a local runtime directory (`backend/chroma_data/`). The SQLite index is committed for convenience in development; production deployments should use an external vector DB.
+- Vector data (embeddings) lives in PostgreSQL through `DATABASE_URL`, using the pgvector extension. Nothing is written to a local directory and nothing is committed - the former `backend/chroma_data/` directory no longer exists, and no vector index is tracked in git (checked, not assumed). Without `DATABASE_URL` the store falls back to memory and is lost on restart.
 - Test fixtures use short, synthetically generated transcript snippets - not real YouTube content.
 
 ---
@@ -116,7 +116,7 @@ The following policy applies unconditionally:
 
 To remain a responsible API consumer:
 
-- `youtube-transcript-api` calls are made once per video per session; results are cached in ChromaDB so repeat questions about the same video do not re-fetch.
+- `youtube-transcript-api` calls are made once per video per session; results are cached in the vector store (PostgreSQL + pgvector) so repeat questions about the same video do not re-fetch.
 - `yt-dlp` is used for one video at a time. No bulk scraping loops exist in the codebase.
 - The YouTube Data API v3 (used only for video search and metadata) is called with the official API key and subject to Google's standard quota (10,000 units/day on a free project).
 - OpenAI API calls (embeddings, chat, Whisper) are subject to the account's rate and cost limits.

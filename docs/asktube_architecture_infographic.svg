@@ -1,6 +1,6 @@
 ﻿<svg width="1120" height="1040" viewBox="0 0 1120 1040" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif" role="img" aria-labelledby="title desc">
-<title id="title">AskTube AI Full Project Architecture</title>
-<desc id="desc">A paper-style architecture infographic showing the current AskTube AI system: Next.js frontend, FastAPI backend, LangChain tools and agent orchestration, YouTube transcript ingestion, ChromaDB vector storage, RAG answering, streaming chat, analytics, Prometheus metrics, evaluation, Docker, and deployment.</desc>
+<title id="title">AskTube AI Full Project Architecture (July 2026 EC2 deployment - superseded)</title>
+<desc id="desc">A paper-style architecture infographic showing the SUPERSEDED July 2026 EC2 deployment of AskTube AI: Next.js frontend, FastAPI backend, LangChain tools and agent orchestration, YouTube transcript ingestion, ChromaDB vector storage, RAG answering, streaming chat, analytics, Prometheus metrics, evaluation, Docker, and deployment.</desc>
 
 <defs>
   <marker id="arrowBlue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
@@ -43,7 +43,7 @@
 
 <text x="18" y="30" fill="#1a1a2e" font-size="24" font-weight="900">ASKTUBE AI</text>
 <text x="18" y="55" fill="#1a1a2e" font-size="24" font-weight="900">ARCHITECTURE</text>
-<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">CURRENT IMPLEMENTATION MAP - HTTPS + DOCKER + EC2 + ANALYTICS</text>
+<text x="220" y="55" fill="#546e7a" font-size="12" font-weight="700">JULY 2026 IMPLEMENTATION MAP - HTTPS + DOCKER + EC2 + ANALYTICS</text>
 
 <!-- User input -->
 <circle cx="430" cy="96" r="17" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>

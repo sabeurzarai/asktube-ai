@@ -9,7 +9,7 @@ This document defines manual testing requirements for AskTube AI.
 AskTube AI is a cinematic AI-powered YouTube learning platform combining:
 - YouTube search (text + voice)
 - Transcript extraction (youtube-transcript-api + Whisper fallback)
-- Semantic chunking and ChromaDB vector storage
+- Semantic chunking and PostgreSQL + pgvector vector storage
 - LangChain RAG pipeline with ChatOpenAI
 - LangChain tool-calling agent (`POST /api/agent/chat`)
 - WebSocket real-time ingest progress stream
@@ -349,24 +349,48 @@ Run before demo or submission:
 
 ## Automated Test Summary
 
-98 pytest tests:
+307 collected tests (306 pass, 1 skips without `TEST_DATABASE_URL`).
+Regenerate this table rather than editing it by hand - it had drifted to 98 tests
+across 17 files, with 8 wrong counts, one file that no longer exists and 18 files
+missing entirely:
+
+```bash
+cd backend && python -m pytest tests -q --collect-only | grep "::" | sed 's/::.*//' | sort | uniq -c | sort -rn
+```
 
 | Test file | Count | Covers |
 |---|---|---|
+| `test_question_kind.py` | 34 | Broad-question heuristic: English + German patterns, Unicode NFC normalisation |
+| `test_rag_service.py` | 31 | RAG orchestration: query rewrite, summarisation branch, recorded metrics, citations |
+| `test_tools.py` | 23 | LangChain tools, including that chunk size follows `CHUNK_MAX_CHARS` |
+| `test_agent_service.py` | 18 | Agent tool dispatch, video binding, memory, citations |
+| `test_summary.py` | 17 | Transcript rebuilding and timestamp validation |
+| `test_config.py` | 15 | Settings parsing (`CORS_ORIGINS` as JSON array, comma-separated or single origin) |
+| `test_analytics_service.py` | 14 | Analytics event recording |
+| `test_vector_store_contract.py` | 14 | One contract suite run against BOTH vector backends |
+| `test_retrieval_eval_fixture.py` | 13 | Offline validation of the retrieval eval fixture - no database, no API key |
+| `test_llm_provider.py` | 11 | Chat-model factory and provider gating |
+| `test_speech_route.py` | 11 | Whisper endpoint: transcript return, whitespace stripping, hallucination filter, 1500-byte minimum, 503/502/422 |
+| `test_embedding_provider.py` | 10 | Embedding factory and provider gating |
+| `test_transcript_service.py` | 10 | Transcript normalisation, proxy configuration, retry-on-block |
+| `test_analytics_routes.py` | 8 | Analytics event API |
 | `test_agent_route.py` | 7 | Agent chat route validation |
-| `test_agent_service.py` | 14 | Agent tool dispatch, memory, citations |
-| `test_tools.py` | 21 | All 7 LangChain tools |
+| `test_conversation_store_contract.py` | 7 | One contract suite run against BOTH conversation backends |
+| `test_vector_store_base.py` | 7 | Cosine distance behaviour shared by the backends |
+| `test_vector_store_factory.py` | 7 | Backend selection from `VECTOR_BACKEND` / `DATABASE_URL` |
+| `test_vectorstore_service.py` | 7 | Vector store service helpers |
 | `test_ingest_stream.py` | 5 | WebSocket ingest stream events |
-| `test_memory_service.py` | 12 | Session memory, history limits, and reset behavior |
+| `test_observability_service.py` | 5 | Evaluation metrics |
+| `test_analytics_database.py` | 4 | Engine setup: pooling, disabled statement cache, SQLite table creation |
+| `test_conversation_store_factory.py` | 4 | Backend selection from `CONVERSATION_BACKEND` / `DATABASE_URL` |
+| `test_route_chunk_size_defaults.py` | 4 | Route query defaults follow `CHUNK_MAX_CHARS` |
+| `test_scratch_db_guard.py` | 4 | Guard that stops a test run pointing at the application database |
 | `test_chat_route.py` | 3 | REST + WebSocket streaming chat |
-| `test_rag_service.py` | 4 | RAG utilities (timestamps, citations, memory) |
+| `test_vectorstore_route.py` | 3 | Vectorstore route |
+| `test_youtube_service.py` | 3 | YouTube utilities and duration filtering |
+| `test_analytics_models.py` | 2 | JSON vs JSONB column typing per dialect |
 | `test_chunking_service.py` | 2 | Semantic chunking |
 | `test_chunking_route.py` | 1 | Chunking route |
+| `test_migrations.py` | 1 | Alembic migration - skipped unless `TEST_DATABASE_URL` is set |
+| `test_search_route.py` | 1 | Search route |
 | `test_transcript_route.py` | 1 | Transcript extraction route |
-| `test_transcript_service.py` | 6 | Transcript normalization and proxy configuration |
-| `test_vectorstore_route.py` | 1 | Vectorstore route |
-| `test_vectorstore_service.py` | 2 | ChromaDB helpers |
-| `test_observability_service.py` | 4 | Evaluation metrics |
-| `test_youtube_service.py` | 3 | YouTube utilities and duration filtering |
-| `test_search_route.py` | 1 | Search route (pre-existing failure: expects 503 when API key present) |
-| `test_speech_route.py` | 11 | Whisper transcription endpoint: transcript return, whitespace stripping, hallucination filter, 1500-byte minimum, 503/502/422 errors, prompt parameter |
