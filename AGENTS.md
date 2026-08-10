@@ -324,6 +324,32 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 - Frontend voice tests stub `@/lib/api` wholesale with `vi.mock` — `lib/analytics.ts`
   must NOT import from `lib/api.ts` (duplicate the resolver logic, keep in sync).
 
+## Diagrams
+
+- `docs/asktube_architecture_flow_infographic.{svg,png,html}` is one artefact in
+  three files: the SVG is the source, the PNG is a 2x raster of it, and the HTML
+  is a 660-byte wrapper that centres the SVG. **Editing the SVG without
+  re-rendering leaves the PNG stale**, and the PNG is the copy that ends up in
+  slides and READMEs — so a stale PNG is the version most people actually see.
+  Re-render with `cd docs && python render_infographic.py`.
+- Two details in that script are load-bearing, and both were got wrong first:
+  it launches **system Chrome** (`channel="chrome"`), because the SVG is set in
+  **Consolas** and any renderer lacking that font silently substitutes a
+  fallback and reflows every text block — this also avoids Playwright's ~150 MB
+  browser download, which is not installed here. And it renders at
+  **`device_scale_factor=2`**, because the SVG viewBox is 1600x1080 while the
+  committed PNG is 3200x2160; rendering at 1x quietly halves the resolution of
+  a file whose purpose is to stay legible when projected.
+- The diagram described **ChromaDB** until 2026-08-10, months after it was
+  removed. Worth knowing as a pattern rather than a one-off: docs prose gets
+  re-read during reviews, but a binary diagram does not, so it drifts silently.
+  If the architecture changes, grep the SVG's text nodes — they are plain text
+  inside the file and greppable.
+- Judging a re-render by eye is not enough. Compare against the previous PNG:
+  same dimensions, then mean absolute difference in a region containing NO
+  intended change (antialiasing is ~1.5/255; anything larger means a reflow),
+  and a best-alignment search over small dx/dy offsets to prove nothing shifted.
+
 ## History (short)
 
 Originally deployed on EC2 (terminated July 2026, Elastic IP released). The repo
