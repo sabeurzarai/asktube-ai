@@ -323,6 +323,19 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 - Frontend: `cd frontend && npx tsc --noEmit && npm test` → expect **79 passed**.
 - Frontend voice tests stub `@/lib/api` wholesale with `vi.mock` — `lib/analytics.ts`
   must NOT import from `lib/api.ts` (duplicate the resolver logic, keep in sync).
+- The per-file breakdown lives in `docs/manual_test_requirements.md`. **Regenerate
+  it, do not hand-edit it** — one collection pass, not one run per file:
+  `cd backend && python -m pytest tests -q --collect-only | grep "::" | sed 's/::.*//' | sort | uniq -c | sort -rn`.
+  It had drifted to 98 tests across 17 files against a reality of 307 across 34:
+  8 wrong counts, one file that no longer existed (`test_memory_service.py`, now
+  the two conversation-store suites) and 18 files missing entirely. The tell was
+  that the same stale 98 also sat in `README.md` — **a number repeated in two
+  files dates them both**, and neither had ever been re-derived. The trap when
+  fixing one is that correcting a single cell leaves the table wrong while making
+  it look freshly reviewed, which is worse than leaving it visibly old.
+  The counts in THIS section are the same kind of hand-maintained number and
+  carry the same risk; they are current as of 2026-08-10 and are worth
+  re-deriving rather than trusted on sight.
 
 ## Diagrams
 
