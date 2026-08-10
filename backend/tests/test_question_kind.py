@@ -6,6 +6,8 @@ latency to every request, and would break the documented guarantee that a first
 turn makes no model call.
 """
 
+import unicodedata
+
 import pytest
 
 from app.services.question_kind import is_broad_question
@@ -28,6 +30,13 @@ BROAD = [
     "Gib mir eine kurze Zusammenfassung",
     "Fasse das Video zusammen",
     "Gib mir einen Überblick",
+    # Phrasings a reviewer found missing. Each is as broad as the ones above -
+    # they were absent only because nobody had listed them, which is exactly the
+    # failure mode a hand-written pattern list has.
+    "Wovon handelt das Video?",
+    "Um was geht's im Video?",
+    "Was ist der Inhalt des Videos?",
+    "Worüber geht es?",
 ]
 
 NARROW = [
@@ -42,6 +51,11 @@ NARROW = [
     # summary path.
     "What is this video about loops?",
     "Summarize what the video says about the while loop",
+    # The German near-misses for the phrasings added above: same opening words,
+    # but each asks about one thing inside the video rather than the whole of it.
+    "Wovon handelt die dritte Schleife?",
+    "Was ist der Inhalt der Liste?",
+    "Um was geht's bei der for-Schleife?",
 ]
 
 
@@ -58,3 +72,24 @@ def test_narrow_questions_are_not_broad(message: str) -> None:
 def test_empty_and_whitespace_are_not_broad() -> None:
     assert is_broad_question("") is False
     assert is_broad_question("   ") is False
+
+
+@pytest.mark.parametrize(
+    "message", ["Worüber geht es im Video?", "Gib mir einen Überblick"]
+)
+def test_decomposed_umlauts_are_recognised_too(message: str) -> None:
+    """The same question in NFD must classify the same as in NFC.
+
+    An umlaut has two Unicode spellings: one code point (NFC, what a German
+    keyboard produces) or a bare vowel plus a combining diaeresis (NFD, which
+    macOS filesystems and some clipboard paths hand over). _normalise strips
+    anything outside its allowlist, and a lone combining mark is outside it - so
+    in NFD "Worüber" became "woru ber" and every German pattern missed. The
+    fallthrough is silent: the question would simply be answered by retrieval,
+    which is why nothing surfaced it until someone looked.
+    """
+    assert unicodedata.normalize("NFD", message) != message, (
+        "this test is only meaningful if the NFD form actually differs"
+    )
+
+    assert is_broad_question(unicodedata.normalize("NFD", message)) is True

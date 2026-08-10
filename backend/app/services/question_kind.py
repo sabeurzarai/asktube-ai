@@ -13,6 +13,7 @@ today's behaviour, so a miss is never a regression.
 """
 
 import re
+import unicodedata
 
 # fullmatch, not search: "what is this video about loops" is a PASSAGE question
 # and must not be caught by the "what is this video about" pattern. Requiring the
@@ -28,8 +29,10 @@ _BROAD_PATTERNS = [
     r"summari[sz]e(?: (?:this|the) video)?",
     r"tl ?dr",
     # German
-    r"wor(?:um|ueber|über) geht(?:'s| es)(?: (?:in dem|im|in diesem) video)?",
+    r"(?:wor(?:um|ueber|über)|um was) geht(?:'s| es)(?: (?:in dem|im|in diesem) video)?",
     r"was behandelt (?:das|dieses) video",
+    r"wovon handelt (?:das|dieses) video",
+    r"was ist der inhalt (?:des|vom) videos?",
     r"(?:gib mir )?(?:eine )?(?:kurze )?zusammenfassung(?: (?:des|vom) videos?)?",
     r"fass(?:e)? (?:das|dieses) video zusammen",
     r"(?:gib mir )?(?:einen )?(?:kurzen )?(?:ueberblick|überblick)(?: ueber das video| über das video)?",
@@ -40,12 +43,21 @@ _COMPILED = [re.compile(pattern) for pattern in _BROAD_PATTERNS]
 
 
 def _normalise(message: str) -> str:
-    """Lowercase, drop punctuation, collapse whitespace.
+    """Compose to NFC, lowercase, drop punctuation, collapse whitespace.
 
     Apostrophes survive so "what's" stays one token; umlauts survive so the
     German patterns match without the caller transliterating.
+
+    The NFC pass is what makes that second promise true. An umlaut has two valid
+    Unicode spellings - one composed code point (U+00FC), or a bare "u" followed
+    by a combining diaeresis (U+0308) - and they are indistinguishable on screen.
+    The allowlist below matches only the composed form, so a decomposed "ü" lost
+    its diaeresis to the punctuation rule and "worüber" arrived as "woru ber",
+    missing every German pattern. Composing first collapses both spellings onto
+    the one the patterns are written in.
     """
-    lowered = message.lower().strip()
+    composed = unicodedata.normalize("NFC", message)
+    lowered = composed.lower().strip()
     cleaned = re.sub(r"[^a-z0-9äöüß' ]+", " ", lowered)
     return re.sub(r"\s+", " ", cleaned).strip()
 

@@ -63,8 +63,14 @@ CURRENT_TOP_K = 5
 GREEN, RED, YELLOW, BOLD, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[1m", "\033[0m"
 
 
-async def rank_every_case(transcripts: dict, cases: list[dict], max_k: int) -> list[dict]:
-    """Return each content case's rank, or None if it is not in the top max_k."""
+async def rank_every_case(
+    transcripts: dict, cases: list[dict], max_k: int
+) -> tuple[list[dict], dict]:
+    """Return each content case's rank, or None if it is not in the top max_k.
+
+    The second element is the per-video chunk statistics the report needs to
+    compute context share; the annotation used to claim only the rows.
+    """
     stores, stats = {}, {}
     for video_id, transcript in transcripts.items():
         chunks = build_semantic_chunks(
@@ -108,7 +114,7 @@ def main_report(rows: list[dict], stats: dict, max_k: int) -> None:
     print("  jedes k darueber kauft nur noch Kontext.\n")
     print(f'  {"k":<5}{"Treffer":<12}{"neu":<7}{"Kontextanteil je Video":<26}Hinweis')
 
-    previous, plateau_at = 0, None
+    plateau_at = None
     for k in range(1, max_k + 1):
         newly = [r["id"] for r in rows if r["rank"] == k]
         hits = sum(1 for r in rows if r["rank"] is not None and r["rank"] <= k)
@@ -128,7 +134,6 @@ def main_report(rows: list[dict], stats: dict, max_k: int) -> None:
             # Which cases a given k buys is the whole decision: one more case is
             # worth 6 points of context only if that case is sound.
             print(f'       {", ".join(newly)}')
-        previous = hits
 
     print(f"\n{'-' * 78}")
     if plateau_at is None:

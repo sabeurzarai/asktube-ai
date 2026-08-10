@@ -39,7 +39,8 @@ SUMMARY_PROMPT = ChatPromptTemplate.from_messages(
             "system",
             (
                 "You are AskTube AI. You are given a full video transcript in which "
-                "every section is prefixed with its timestamp in [MM:SS] form. "
+                "every section is prefixed with its timestamp in square brackets - "
+                "[MM:SS], or [HH:MM:SS] once the video passes an hour. "
                 "Summarise what the video covers, as a short overview followed by the "
                 "main points in the order they appear. "
                 "Start every main point with the timestamp of the section it comes "
@@ -109,6 +110,15 @@ def citations_for_timestamps(
     2. Range containment, as a fallback, for marks the model took from inside a
        section rather than copied from its label - those never had a display
        match to begin with.
+
+    Both steps take the FIRST match in start order, which decides the ties they
+    can produce: two chunks starting at 60.2s and 60.8s display the same "01:00",
+    and overlapping ranges can contain the same mark. The earlier chunk wins,
+    because it is the one whose label appeared first in the rebuilt transcript
+    and so is the likelier referent. The tie is not resolvable in principle -
+    truncating to whole seconds destroyed the distinguishing information before
+    the model ever saw it - so this is a defensible default, not a correct
+    answer.
 
     A model can also emit a timestamp that exists nowhere in the video. Attaching
     a citation object to it would assert a source that does not exist, which is

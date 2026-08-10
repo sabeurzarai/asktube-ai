@@ -219,7 +219,23 @@ class RAGService:
             chain = SUMMARY_PROMPT | self.create_chat_model(streaming=False)
             response = await chain.ainvoke(
                 {"transcript": transcript, "question": message},
-                config={"run_name": "video_summary", "tags": ["rag", "summary"]},
+                config={
+                    "run_name": "video_summary",
+                    "tags": ["rag", "summary"],
+                    # Without these, a summary trace could not be attributed to a
+                    # video at all - the retrieval chain has carried video_id
+                    # since it was written, and this one is the path where the
+                    # call is LARGEST, so it is the one worth being able to find.
+                    # session_id is deliberately absent: it is not resolved until
+                    # after this call returns, and the enclosing `rag_answer` run
+                    # already records it, so duplicating it here would mean
+                    # creating a session id for an answer that may never exist.
+                    "metadata": {
+                        "video_id": video_id,
+                        "chunk_count": len(chunks),
+                        "transcript_chars": len(transcript),
+                    },
+                },
             )
             answer = str(response.content).strip()
         except Exception as exc:  # noqa: BLE001 - deliberately broad: the call goes to a

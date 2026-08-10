@@ -164,9 +164,18 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   setting rather than a literal (`test_chunk_transcript_calls_service_with_correct_options`
   for `tools/chunk_transcript.py`, `test_ingest_video_chunks_with_configured_chunk_settings`
   for `tools/ingest_video.py` — the one that determines production chunk size on
-  the agent path). The two `Query(default=settings.chunk_max_chars)` route
-  defaults in `routes/chunks.py` and `routes/vectorstore.py` remain untested: a
-  regression there would not be caught by the suite.
+  the agent path). The other two — the `Query(default=settings.chunk_max_chars)`
+  route defaults in `routes/chunks.py` and `routes/vectorstore.py` — are now
+  guarded too, by `tests/test_route_chunk_size_defaults.py`, so all four call
+  sites are covered. That guard reads the default from the **OpenAPI schema**
+  rather than the function signature, because the schema is what a client is
+  told and what FastAPI applies when the parameter is omitted; a signature check
+  would still pass if the parameter stopped being wired into the route. Its
+  limit is worth knowing: `Query(default=...)` is evaluated at import time, so
+  it cannot catch a hardcoded literal that happens to equal the current setting.
+  It catches the regression that actually occurred — the setting moving while a
+  call site stays behind. Verified by reintroducing the literal 1200 and
+  confirming the guard goes red.
 - Summarisation path: a **broad** question ("what is this video about?") does not
   go through retrieval. `is_broad_question` in
   `backend/app/services/question_kind.py` classifies it with a **pure pattern
@@ -176,6 +185,14 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   are usually first turns). The cost is that only phrasings someone listed are
   recognised; a miss falls through to retrieval, which is the old behaviour, so
   it is never a regression.
+  `_normalise` composes to **Unicode NFC** before matching, and that line is
+  load-bearing rather than defensive. An umlaut has two valid spellings — one
+  composed code point, or a bare vowel plus a combining diaeresis — which look
+  identical on screen. The allowlist keeps only the composed form, so a
+  decomposed `ü` lost its diaeresis to the punctuation rule and `worüber`
+  arrived as `woru ber`, missing EVERY German pattern. Nothing surfaced it
+  because the failure is a silent fallthrough to retrieval, and the ASCII
+  patterns were unaffected. Pinned by `test_decomposed_umlauts_are_recognised_too`.
   `RAGService.summarize_video` then reads EVERY chunk via the vector store's
   `list_video_chunks`, rebuilds a timestamped transcript and makes **one** chat
   call. Timestamps in the answer are validated against real chunks before
@@ -294,10 +311,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **287 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **306 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **283 passed, 5
+  local-embedding tests skip instead of running, giving **302 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

@@ -19,6 +19,7 @@ import pytest
 
 from app.schemas.transcript import TranscriptResponse
 from app.services.chunking_service import build_semantic_chunks
+from app.services.question_kind import is_broad_question
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CASES_PATH = FIXTURES / "retrieval_eval_cases.json"
@@ -160,8 +161,6 @@ def test_no_content_case_is_classified_as_broad(fixture_data) -> None:  # noqa: 
     the heuristic ever starts matching one, an ordinary question is being sent
     down the summary path.
     """
-    from app.services.question_kind import is_broad_question
-
     misrouted = [
         c["id"] for c in fixture_data["cases"]
         if c["kind"] != "off_topic" and is_broad_question(c["question"])
