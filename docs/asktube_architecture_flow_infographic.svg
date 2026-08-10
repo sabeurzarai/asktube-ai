@@ -81,9 +81,9 @@
   <text x="535" y="374" class="smallBoxText" text-anchor="middle">search console + carousel</text>
 
   <text x="714" y="292" class="route" text-anchor="middle">/api/search</text>
-  <text x="714" y="414" class="route" text-anchor="middle">/api/videos/{id}/ingest/stream</text>
+  <text x="714" y="404" class="route" text-anchor="middle">/api/videos/{id}/ingest/stream</text>
   <line x1="674" y1="330" x2="782" y2="330" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
-  <line x1="674" y1="426" x2="782" y2="426" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+  <line x1="674" y1="433" x2="782" y2="433" stroke="#f8fafc" stroke-width="4" marker-end="url(#arrow)"/>
 
   <rect x="800" y="283" width="260" height="100" rx="18" class="box"/>
   <text x="930" y="344" class="boxText" text-anchor="middle">FastAPI Backend</text>
@@ -104,10 +104,10 @@
   <line x1="1060" y1="430" x2="1168" y2="430" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
 
   <line x1="930" y1="383" x2="930" y2="459" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
-  <rect x="774" y="456" width="312" height="58" rx="14" fill="#fef9c3" stroke="#fde047" stroke-width="3" filter="url(#softShadow)"/>
+  <rect x="725" y="456" width="410" height="58" rx="14" fill="#fef9c3" stroke="#fde047" stroke-width="3" filter="url(#softShadow)"/>
   <text x="930" y="493" class="yellowText" text-anchor="middle">chunk transcript + embed text</text>
 
-  <line x1="1087" y1="485" x2="1368" y2="485" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
+  <line x1="1145" y1="485" x2="1368" y2="485" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
   <circle cx="1460" cy="485" r="72" fill="#fde047" stroke="#eab308" stroke-width="4" filter="url(#softShadow)"/>
   <text x="1460" y="477" class="yellowText" text-anchor="middle">pgvector</text>
   <text x="1460" y="508" class="yellowText" text-anchor="middle">Vectors</text>
