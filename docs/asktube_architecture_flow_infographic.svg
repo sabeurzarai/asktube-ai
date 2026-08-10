@@ -1,0 +1,178 @@
+<svg width="1600" height="1080" viewBox="0 0 1600 1080" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Segoe UI, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">AskTube AI Architecture Flow Infographic</title>
+  <desc id="desc">A dark two-lane architecture infographic for AskTube AI showing the discover and ingest flow, the chat and citation flow, analytics, observability, and deployment.</desc>
+
+  <defs>
+    <pattern id="dotGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.35" fill="#4b5563" opacity="0.55"/>
+    </pattern>
+
+    <filter id="softShadow" x="-15%" y="-20%" width="130%" height="145%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+
+    <marker id="arrow" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
+      <path d="M 0 0 L 12 5 L 0 10 z" fill="#f8fafc"/>
+    </marker>
+
+    <marker id="arrowTeal" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
+      <path d="M 0 0 L 12 5 L 0 10 z" fill="#2dd4bf"/>
+    </marker>
+
+    <marker id="arrowYellow" markerWidth="12" markerHeight="10" refX="11" refY="5" orient="auto">
+      <path d="M 0 0 L 12 5 L 0 10 z" fill="#facc15"/>
+    </marker>
+
+    <style>
+      .title { fill: #f8fafc; font-size: 58px; font-weight: 760; letter-spacing: 0; }
+      .subtitle { fill: #cbd5e1; font-size: 20px; font-weight: 520; }
+      .lane { fill: none; stroke: #e7e36b; stroke-width: 2.5; stroke-dasharray: 12 12; opacity: 0.9; }
+      .tag { fill: #eaf6ff; stroke: #b7d8ea; stroke-width: 2; }
+      .tagText { fill: #243447; font-size: 22px; font-weight: 760; }
+      .box { fill: #eef8ff; stroke: #d7eaf4; stroke-width: 2; filter: url(#softShadow); }
+      .boxText { fill: #27313f; font-size: 30px; font-weight: 760; }
+      .smallBoxText { fill: #334155; font-size: 18px; font-weight: 650; }
+      .note { fill: #e5e7eb; font-size: 24px; font-weight: 560; }
+      .route { fill: #f8fafc; font-size: 20px; font-weight: 820; font-family: Consolas, Monaco, monospace; }
+      .caption { fill: #cbd5e1; font-size: 18px; font-weight: 540; }
+      .chip { fill: #f8fafc; stroke: #dbeafe; stroke-width: 2; filter: url(#softShadow); }
+      .chipText { fill: #172033; font-size: 19px; font-weight: 760; }
+      .muted { fill: #94a3b8; font-size: 16px; font-weight: 520; }
+      .yellowText { fill: #342e05; font-size: 26px; font-weight: 850; }
+      .tealText { fill: #053b36; font-size: 22px; font-weight: 850; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1080" fill="#262626"/>
+  <rect width="1600" height="1080" fill="url(#dotGrid)"/>
+  <rect x="0" y="0" width="1600" height="1080" fill="#111827" opacity="0.18"/>
+
+  <text x="800" y="70" class="title" text-anchor="middle">AskTube AI Architecture</text>
+  <text x="800" y="106" class="subtitle" text-anchor="middle">Search YouTube videos, ingest transcripts into ChromaDB, then chat with grounded timestamp citations</text>
+
+  <!-- Lanes -->
+  <rect x="28" y="158" width="1544" height="374" rx="22" class="lane"/>
+  <rect x="28" y="582" width="1544" height="346" rx="22" class="lane"/>
+
+  <rect x="0" y="154" width="348" height="48" rx="12" class="tag"/>
+  <text x="22" y="185" class="tagText">Feature: Discover + Ingest</text>
+
+  <rect x="0" y="578" width="178" height="48" rx="12" class="tag"/>
+  <text x="22" y="609" class="tagText">Feature: Chat</text>
+
+  <!-- User icon top -->
+  <circle cx="86" cy="332" r="45" fill="#fed7aa" stroke="#111827" stroke-width="5"/>
+  <path d="M 48 326 C 50 284, 82 260, 119 284 C 132 292, 138 307, 135 327 C 124 302, 90 301, 68 279 C 62 297, 56 310, 48 326 z" fill="#8b4a2f" stroke="#111827" stroke-width="4"/>
+  <circle cx="70" cy="335" r="4.5" fill="#111827"/>
+  <circle cx="103" cy="335" r="4.5" fill="#111827"/>
+  <path d="M 76 356 C 84 365, 96 365, 106 356" stroke="#111827" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M 48 405 C 62 382, 110 382, 126 405 L 136 436 L 38 436 z" fill="#60a5fa" stroke="#111827" stroke-width="5"/>
+  <text x="86" y="475" class="note" text-anchor="middle">Learner</text>
+
+  <!-- Search input -->
+  <rect x="168" y="293" width="110" height="72" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="3" filter="url(#softShadow)"/>
+  <path d="M 188 316 h42 m-42 15 h63 m-63 15 h52" stroke="#ea580c" stroke-width="6" stroke-linecap="round"/>
+  <text x="223" y="394" class="note" text-anchor="middle">Query or voice</text>
+
+  <line x1="288" y1="330" x2="392" y2="330" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <rect x="410" y="283" width="250" height="100" rx="18" class="box"/>
+  <text x="535" y="344" class="boxText" text-anchor="middle">Next.js App</text>
+  <text x="535" y="374" class="smallBoxText" text-anchor="middle">search console + carousel</text>
+
+  <text x="714" y="292" class="route" text-anchor="middle">/api/search</text>
+  <text x="714" y="414" class="route" text-anchor="middle">/api/videos/{id}/ingest/stream</text>
+  <line x1="674" y1="330" x2="782" y2="330" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+  <line x1="674" y1="426" x2="782" y2="426" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <rect x="800" y="283" width="260" height="100" rx="18" class="box"/>
+  <text x="930" y="344" class="boxText" text-anchor="middle">FastAPI Backend</text>
+  <text x="930" y="374" class="smallBoxText" text-anchor="middle">routes + async services</text>
+
+  <line x1="1076" y1="330" x2="1178" y2="330" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <g transform="translate(1198 220)">
+    <rect x="0" y="0" width="162" height="44" rx="10" class="chip"/>
+    <text x="81" y="29" class="chipText" text-anchor="middle">YouTube API</text>
+    <rect x="-18" y="88" width="202" height="52" rx="12" class="chip"/>
+    <text x="83" y="120" class="chipText" text-anchor="middle">Transcript API</text>
+    <rect x="-18" y="160" width="202" height="52" rx="12" class="chip"/>
+    <text x="83" y="194" class="chipText" text-anchor="middle">Webshare proxy</text>
+    <text x="83" y="236" class="caption" text-anchor="middle">cloud IP workaround</text>
+  </g>
+
+  <line x1="1060" y1="430" x2="1168" y2="430" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <line x1="930" y1="383" x2="930" y2="459" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
+  <rect x="774" y="456" width="312" height="58" rx="14" fill="#fef9c3" stroke="#fde047" stroke-width="3" filter="url(#softShadow)"/>
+  <text x="930" y="493" class="yellowText" text-anchor="middle">chunk transcript + embed text</text>
+
+  <line x1="1087" y1="485" x2="1368" y2="485" stroke="#facc15" stroke-width="5" marker-end="url(#arrowYellow)"/>
+  <circle cx="1460" cy="485" r="72" fill="#fde047" stroke="#eab308" stroke-width="4" filter="url(#softShadow)"/>
+  <text x="1460" y="477" class="yellowText" text-anchor="middle">ChromaDB</text>
+  <text x="1460" y="508" class="yellowText" text-anchor="middle">Vectors</text>
+  <text x="1460" y="558" class="caption" text-anchor="middle">collection: asktube_videos</text>
+
+  <!-- Chat lane user -->
+  <circle cx="86" cy="742" r="45" fill="#fed7aa" stroke="#111827" stroke-width="5"/>
+  <path d="M 48 736 C 50 694, 82 670, 119 694 C 132 702, 138 717, 135 737 C 124 712, 90 711, 68 689 C 62 707, 56 720, 48 736 z" fill="#8b4a2f" stroke="#111827" stroke-width="4"/>
+  <circle cx="70" cy="745" r="4.5" fill="#111827"/>
+  <circle cx="103" cy="745" r="4.5" fill="#111827"/>
+  <path d="M 76 766 C 84 775, 96 775, 106 766" stroke="#111827" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M 48 815 C 62 792, 110 792, 126 815 L 136 846 L 38 846 z" fill="#38bdf8" stroke="#111827" stroke-width="5"/>
+  <text x="86" y="882" class="note" text-anchor="middle">Learner</text>
+
+  <line x1="148" y1="742" x2="392" y2="742" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+  <text x="260" y="724" class="note" text-anchor="middle">question</text>
+
+  <rect x="410" y="692" width="250" height="100" rx="18" class="box"/>
+  <text x="535" y="753" class="boxText" text-anchor="middle">Next.js App</text>
+  <text x="535" y="783" class="smallBoxText" text-anchor="middle">workspace + streaming UI</text>
+
+  <text x="714" y="674" class="route" text-anchor="middle">/api/chat</text>
+  <text x="714" y="706" class="route" text-anchor="middle">/api/chat/stream</text>
+  <text x="714" y="818" class="route" text-anchor="middle">/api/agent/chat</text>
+  <line x1="674" y1="742" x2="782" y2="742" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <rect x="800" y="692" width="250" height="100" rx="18" class="box"/>
+  <text x="925" y="753" class="boxText" text-anchor="middle">FastAPI Backend</text>
+  <text x="925" y="783" class="smallBoxText" text-anchor="middle">RAG + agent endpoints</text>
+
+  <line x1="1068" y1="742" x2="1144" y2="742" stroke="#f8fafc" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <circle cx="1246" cy="742" r="112" fill="#14d7a3" stroke="#0f766e" stroke-width="4" filter="url(#softShadow)"/>
+  <text x="1246" y="704" class="tealText" text-anchor="middle">Orchestrator</text>
+  <text x="1246" y="735" class="tealText" text-anchor="middle">LangChain tools</text>
+  <circle cx="1246" cy="782" r="42" fill="#bfdbfe" stroke="#93c5fd" stroke-width="3"/>
+  <text x="1246" y="790" fill="#1e3a8a" font-size="24" font-weight="850" text-anchor="middle">LLM</text>
+
+  <path d="M 1308 700 C 1378 656, 1432 660, 1457 710" stroke="#facc15" stroke-width="5" fill="none" marker-end="url(#arrowYellow)"/>
+  <path d="M 1460 778 C 1420 852, 1350 853, 1308 812" stroke="#facc15" stroke-width="5" fill="none" marker-end="url(#arrowYellow)"/>
+  <circle cx="1460" cy="742" r="72" fill="#fde047" stroke="#eab308" stroke-width="4" filter="url(#softShadow)"/>
+  <text x="1460" y="734" class="yellowText" text-anchor="middle">Vector</text>
+  <text x="1460" y="765" class="yellowText" text-anchor="middle">Search</text>
+
+  <path d="M 1130 814 C 1040 892, 730 888, 610 818" stroke="#2dd4bf" stroke-width="5" fill="none" marker-end="url(#arrowTeal)"/>
+  <text x="865" y="878" fill="#ccfbf1" font-size="24" font-weight="720" text-anchor="middle">grounded answer + timestamp citations + session memory</text>
+
+  <!-- Bottom observability and deployment rail -->
+  <rect x="76" y="954" width="232" height="54" rx="12" class="chip"/>
+  <text x="192" y="989" class="chipText" text-anchor="middle">Vercel frontend</text>
+
+  <rect x="334" y="954" width="248" height="54" rx="12" class="chip"/>
+  <text x="458" y="989" class="chipText" text-anchor="middle">Render FastAPI</text>
+
+  <rect x="608" y="954" width="276" height="54" rx="12" class="chip"/>
+  <text x="746" y="989" class="chipText" text-anchor="middle">Embedded Chroma free tier</text>
+
+  <rect x="910" y="954" width="222" height="54" rx="12" class="chip"/>
+  <text x="1021" y="989" class="chipText" text-anchor="middle">Analytics SQLite</text>
+
+  <rect x="1158" y="954" width="178" height="54" rx="12" class="chip"/>
+  <text x="1247" y="989" class="chipText" text-anchor="middle">Prometheus</text>
+
+  <rect x="1362" y="954" width="178" height="54" rx="12" class="chip"/>
+  <text x="1451" y="989" class="chipText" text-anchor="middle">LangSmith</text>
+
+  <text x="800" y="1038" class="muted" text-anchor="middle">Live demo: DuckDNS -> Vercel frontend; frontend calls Render backend. Push to main auto-deploys both platforms.</text>
+</svg>
