@@ -118,7 +118,7 @@ Browser -> DuckDNS domain -> Let’s Encrypt HTTPS -> Nginx -> Next.js / FastAPI
 
 Voice search requires HTTPS in Chrome. The old raw-IP URL works for basic text testing, but microphone permission is blocked on insecure `http://` IP addresses.
 
-> Note: YouTube blocks transcript extraction from AWS/cloud IPs. The project includes Webshare residential proxy support. Set `WEBSHARE_PROXY_URL=http://<user>:<pass>@p.webshare.io:80` in your `.env` to route transcript requests through the proxy. This is required for production EC2 deployments.
+> Note: YouTube blocks transcript extraction from datacenter IPs, so any hosted deployment needs the Webshare residential proxy: set `WEBSHARE_PROXY_URL=http://<user>:<pass>@p.webshare.io:80` in your `.env`. **Use a rotating username** (`<user>-rotate`, not a pinned `<user>-DE-1`) — a pinned username always leaves through the same exit IP, and when YouTube flags it, ingestion stops while the account and quota are perfectly healthy. Even rotating, roughly one attempt in six draws a flagged IP, so `TranscriptService` retries a blocked fetch up to three times when a proxy is configured.
 
 ---
 
@@ -286,7 +286,7 @@ AskTube AI/
 |   +-- tests/
 |   |   +-- fixtures/
 |   |   |   +-- rag_eval_cases.json  # 17 RAG evaluation cases
-|   |   +-- ...                   # 98 pytest tests total
+|   |   +-- ...                   # 287 pytest tests total
 |   +-- requirements.txt
 |   +-- Dockerfile                # Production build with ffmpeg
 |
@@ -337,8 +337,11 @@ Such questions therefore skip retrieval. `is_broad_question` recognises them wit
 
 `summarize_video` then reads *every* chunk of the video, rebuilds a timestamped transcript, and makes **one** model call. Timestamps in the answer are validated against the real chunks before becoming citations, so a mark the model invented is dropped rather than presented as a source. The whole path degrades rather than fails: no chunks, a transcript over 40,000 characters, or a failed model call each send the question back to ordinary retrieval.
 
+### Which chat endpoint the frontend uses
+Two chat surfaces exist and they do not share a route. The **AI workspace** (`components/landing/ai-workspace.tsx`) calls `POST /api/agent/chat`; only the floating companion (`components/floating-companion.tsx`) calls `POST /api/chat`. Both reach the same `RAGService` underneath, so the summarisation path and the query rewrite apply to either — but the agent wraps them in a tool-calling loop that can behave differently, which is why a chat change verified only against `/api/chat` has not been verified against what the demo actually uses.
+
 ### LangChain Tools / Tool-calling Agent
-Seven `StructuredTool` objects live in `backend/app/tools/`: `search_youtube_videos`, `extract_transcript`, `chunk_transcript`, `store_video_vectors`, `ingest_video`, `retrieve_context`, and `answer_question`. `AgentService` (in `agent_service.py`) binds these tools to the LLM via `bind_tools()` and runs a tool-calling loop: the model decides which tools to call, the agent executes them, and the results are fed back until a final answer is produced. This is exposed through the dedicated `POST /api/agent/chat` route.
+Seven `StructuredTool` factories live in `backend/app/tools/`, but `get_agent_service` binds only **four** of them to the model: `search_youtube_videos`, `ingest_video`, `retrieve_context` and `answer_question`. The other three — `extract_transcript`, `chunk_transcript` and `store_video_vectors` — are the individual steps that `ingest_video` already composes into one call, so exposing them separately would only give the model more ways to build the same pipeline by hand. `AgentService` (in `agent_service.py`) binds the four via `bind_tools()` and runs a tool-calling loop: the model decides which tools to call, the agent executes them, and the results are fed back until a final answer is produced. This is exposed through the dedicated `POST /api/agent/chat` route.
 
 ### Conversational Memory
 `memory_service.py` resolves a `ConversationStore` — Postgres when `DATABASE_URL` is set, in-process otherwise — keyed by `session_id`. History is trimmed to the newest 8 messages per session and injected into the prompt context on every request, enabling coherent multi-turn conversations about video content. Memory degrades rather than fails: if the store is unreachable the answer is still produced, with empty history.
@@ -358,8 +361,9 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 `transcript_service.py` fetches captions via `youtube-transcript-api` and cleans the raw segments. `chunking_service.py` splits the cleaned text into overlapping chunks using LangChain's splitter, preserving timestamp metadata on each chunk. This pipeline converts raw YouTube captions into retrieval-ready documents.
 
 ### Testing and Evaluation
-- **119 pytest tests** covering services, routes, tools, speech, WebSocket ingestion, and the agent pipeline.
-- **Evaluation dataset**: `tests/fixtures/rag_eval_cases.json` - 17 hand-crafted RAG cases with expected answers and metadata.
+- **287 backend tests** (`cd backend && python -m pytest`) covering services, routes, tools, speech, WebSocket ingestion, retrieval quality and the agent pipeline, plus **79 frontend tests** (`cd frontend && npx tsc --noEmit && npm test`).
+- **Answer-quality dataset**: `tests/fixtures/rag_eval_cases.json` - 15 hand-crafted RAG cases with expected answers and metadata. It scores ANSWERS: groundedness, citation quality, latency.
+- **Retrieval dataset**: `tests/fixtures/retrieval_eval_cases.json` - 29 conversation cases across **two deliberately unrelated videos** (a Python tutorial and a biology lecture), scored on whether the expected passage reaches the top-k. It measures a different stage: in the failure that motivated it, the answer was faithfully grounded in the chunks it received - the wrong chunks had been retrieved, which no answer-quality score can see. `scripts/run_retrieval_eval.py --frozen` runs it deterministically; `tests/test_retrieval_eval_fixture.py` validates the fixture offline, with no database and no API key.
 - **CLI runner**: `scripts/run_evaluation.py` executes the evaluation dataset against the live backend and reports per-case scores.
 - **Inline heuristic evaluation**: `RAG_EVALUATOR_MODE=heuristic` scores each RAG response at inference time (source coverage, answer length, hallucination-risk flag) and includes scores in the API response.
 - **LangSmith tracing** (optional, `LANGSMITH_TRACING=true`) captures full chain traces for offline evaluation.
