@@ -28,7 +28,21 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   still resets on restart. Warm `/health` before presenting; re-ingesting is no
   longer required.
 - YouTube blocks transcript fetches from datacenter IPs: `WEBSHARE_PROXY_URL`
-  (residential proxy) must be set on Render or ingestion 502s.
+  (residential proxy) must be set on Render or ingestion 502s. **Use a rotating
+  username** — `yschfeat-rotate`, not a pinned `yschfeat-DE-1`. A pinned username
+  leaves through ONE exit IP, and when YouTube flags it, ingestion stops dead
+  while the account, quota and credentials are all healthy; the symptom is
+  identical to having no proxy at all. Rotation is a property of the username
+  suffix, not a dashboard setting. With rotation roughly 1 in 6 attempts still
+  draws a flagged IP, which is why `TranscriptService` retries blocks — see the
+  ingest-resilience note below.
+
+- **Two chat endpoints, and the frontend uses the agent one.**
+  `components/landing/ai-workspace.tsx` (the workspace) calls
+  `POST /api/agent/chat`; only `components/floating-companion.tsx` calls
+  `POST /api/chat`. Verifying a chat change against `/api/chat` alone therefore
+  proves nothing about what users experience — that mistake hid two live defects
+  through a full design, review and verification cycle. Exercise the workspace.
 
 ## Configuration
 
@@ -280,10 +294,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **280 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **287 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **276 passed, 5
+  local-embedding tests skip instead of running, giving **283 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`
