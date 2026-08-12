@@ -1,5 +1,15 @@
 # Prompt: Add optional NVIDIA NIM chat provider to AskTube AI
 
+> **Historical — a task prompt that was executed on 2026-07-04.**
+>
+> Its "Verified codebase facts (do not rediscover)" block describes the codebase
+> as it was *before* this change, which is what a task prompt's preconditions
+> always are — but undated, that block reads like current guidance not to check.
+> It no longer holds: `create_chat_model` now lives in
+> `backend/app/services/llm_provider.py` (the file this prompt introduced) and at
+> `rag_service.py:569`, not at "~line 257". Verify against the code, not against
+> this list. For the current architecture see `AGENTS.md`.
+
 Implement optional NVIDIA AI endpoint support for AskTube AI as an alternative **chat** model provider. Make the smallest possible change, follow existing project patterns, and add no new dependencies.
 
 ## Goal

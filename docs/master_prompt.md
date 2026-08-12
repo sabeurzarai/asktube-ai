@@ -1,5 +1,19 @@
 # AskTube AI - Project Specification
 
+> **Historical — the original specification (May 2026). Not a description of how
+> the system works today.**
+>
+> This is what the project was built *from*, kept as a record. Parts of it no
+> longer match the code: it names `ChromaVectorStoreService` and its
+> `.upsert_chunks()` / `.similarity_search()` methods, and lists ChromaDB as the
+> vector store and as a deployment mode. That class no longer exists anywhere in
+> `backend/app/`, and the store is now PostgreSQL + pgvector. Not everything here
+> is stale — `GET /api/vectorstore/search`, for instance, still exists.
+>
+> It is deliberately **not** updated: rewriting a specification after the fact
+> would falsify what was actually specified. For how the system works now, see
+> `AGENTS.md` and `README.md`.
+
 ## Project Identity
 
 AskTube AI is a cinematic AI-powered YouTube learning platform.
