@@ -74,7 +74,10 @@ def test_ingest_transcript_chunks_route() -> None:
     assert payload["stored_chunk_ids"] == ["video123:0:test"]
 
 
-def test_search_returns_502_naming_a_paused_database() -> None:
+def test_search_returns_502_when_the_connection_itself_fails() -> None:
+    """The socket-level half. The database-answers-then-refuses half is below,
+    and it is the one a paused Supabase project actually produces - this test
+    kept its name for months while raising the wrong error for that cause."""
     class FailingVectorStoreService:
         async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
             raise OSError("connection refused")
@@ -132,3 +135,65 @@ def test_ingest_returns_502_when_embedding_dimension_mismatches() -> None:
     # wiping and re-ingesting the store.
     assert "dimension mismatch" in detail
     assert "re-ingest" in detail
+
+
+def test_search_returns_502_when_the_database_rejects_the_query() -> None:
+    """A paused database answers; it does not refuse the socket.
+
+    The sibling test above raises OSError, encoding the assumption written into
+    `_vectorstore_connection_error`: that a paused Supabase project "fails
+    exactly like a network fault (connection refused/reset)". Production
+    disproved that on 2026-08-21 - `GET /api/vectorstore/search` returned a bare
+    500 while embeddings still worked, because the pooler ACCEPTS the connection
+    and then reports the paused project as a Postgres-level error. SQLAlchemy
+    wraps that in SQLAlchemyError, which is not an OSError, so the carefully
+    worded 502 below could never fire for the one case it was written for.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    class FailingVectorStoreService:
+        async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
+            raise SQLAlchemyError("server closed the connection unexpectedly")
+
+    app.dependency_overrides[get_vectorstore_service] = lambda: FailingVectorStoreService()
+    client = TestClient(app)
+
+    response = client.get("/api/vectorstore/search", params={"q": "anything"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    detail = response.json()["detail"].lower()
+    assert "database" in detail
+    assert "paused" in detail
+
+
+def test_a_database_failure_still_carries_cors_headers() -> None:
+    """The browser must see the message, not an opaque network error.
+
+    An unhandled exception propagates past CORSMiddleware to Starlette's outer
+    error handler, so the resulting 500 has NO Access-Control-Allow-Origin and
+    the frontend reports only "Failed to fetch" - the exact symptom recorded in
+    LEARNINGS.md on 2026-07-05 for a different route. Verified against the live
+    deployment on 2026-08-21: the 500 carried no CORS headers while a 200 from
+    /health carried them. Returning a proper HTTPException keeps the response
+    inside the middleware stack, which is what puts the headers back.
+    """
+    from sqlalchemy.exc import SQLAlchemyError
+
+    class FailingVectorStoreService:
+        async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
+            raise SQLAlchemyError("server closed the connection unexpectedly")
+
+    app.dependency_overrides[get_vectorstore_service] = lambda: FailingVectorStoreService()
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/vectorstore/search",
+        params={"q": "anything"},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"

@@ -101,7 +101,12 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   the store is unreachable, `RAGService` logs a warning and answers with empty
   history instead of erroring — deliberately the opposite of retrieval, which
   fails loudly with a 502, since retrieval is the product and memory is only an
-  enhancement. The in-memory implementation stays permanently as the dev/CI
+  enhancement. That sentence was aspirational until 2026-08-21: `prepare_context`
+  had NO handling around `similarity_search`, so a store outage left through
+  `/api/chat` and `/api/agent/chat` — the endpoints the frontend uses — as a bare
+  500. Both halves now go through `app/services/store_errors.py`, which owns the
+  one exception tuple (`OSError`, `ConnectionError`, `SQLAlchemyError`) and the
+  one message. The in-memory implementation stays permanently as the dev/CI
   backend — unlike ChromaDB it is not being removed — so
   `CONVERSATION_BACKEND=memory` remains a supported rollback. Migration `0003`
   creates `conversation_messages`; run migrations with `cd backend && python -m
@@ -230,6 +235,26 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `citations` is not, `evaluate_response_quality` derives the context text and
   the citation evaluation from the citations instead, mirroring the same
   principle `_record_rag_metrics` already applies via `context_chars`.
+- Store outages: the exception set matters as much as the message, and getting
+  it wrong hides the message completely. `routes/vectorstore.py` has long carried
+  a 502 naming a paused Supabase project, above a comment asserting that such a
+  project "fails exactly like a network fault (connection refused/reset)". It
+  does not. Measured live on 2026-08-21: the pooler ACCEPTS the connection and
+  reports the paused project at the Postgres protocol level, which SQLAlchemy
+  raises as `SQLAlchemyError` — not an `OSError` — so a catch of
+  `(OSError, ConnectionError)` missed the single case the message existed for.
+  Symptom: `/health` 200, embeddings 200, and `GET /api/vectorstore/search` a
+  bare 500. **A bare 500 also loses CORS** (it propagates past `CORSMiddleware`),
+  so the browser shows only "Failed to fetch" and the message never reaches
+  anyone — verified live, and pinned by
+  `test_a_database_failure_still_carries_cors_headers`.
+  One ordering detail is load-bearing: `prepare_context` reads history BEFORE it
+  searches, so with a single `DATABASE_URL` the memory read fails first. If that
+  read does not also treat a Postgres-level error as an outage, it 500s and
+  retrieval's 502 is dead code in exactly the situation it was written for —
+  which is why the degrading catches were widened too, and why
+  `test_a_paused_database_still_yields_502_even_though_memory_is_read_first`
+  exists.
 - Ingest resilience: a blocked transcript request is **retried up to
   `_BLOCK_RETRY_ATTEMPTS` (3) times, but only when a proxy is configured**
   (`TranscriptService._fetch_with_block_retries`). A rotating Webshare username
@@ -311,10 +336,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **306 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **311 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **302 passed, 5
+  local-embedding tests skip instead of running, giving **307 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

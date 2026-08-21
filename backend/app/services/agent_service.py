@@ -20,6 +20,7 @@ from app.services.llm_provider import (
 )
 from app.services.memory_service import get_memory_service
 from app.services.rag_service import RAGService, get_rag_service
+from app.services.store_errors import STORE_UNAVAILABLE
 from app.services.transcript_service import get_transcript_service
 from app.services.vectorstore_service import get_vectorstore_service
 from app.services.youtube_service import get_youtube_service
@@ -84,7 +85,7 @@ class AgentService:
         """
         try:
             return await self.memory.get_messages(session_id)
-        except (OSError, ConnectionError):
+        except STORE_UNAVAILABLE:
             logger.warning(
                 "Conversation store unreachable reading history for session %s; "
                 "continuing with empty memory.",
@@ -102,7 +103,7 @@ class AgentService:
         """
         try:
             await self.memory.append_exchange(session_id, user_message, assistant_message)
-        except (OSError, ConnectionError):
+        except STORE_UNAVAILABLE:
             logger.warning(
                 "Conversation store unreachable appending exchange for session %s; "
                 "answer will be returned without being remembered.",

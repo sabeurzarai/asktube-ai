@@ -16,6 +16,10 @@ from app.services.conversation_store import ConversationStore
 from app.services.llm_provider import create_chat_model, require_chat_credentials
 from app.services.memory_service import get_memory_service
 from app.services.question_kind import is_broad_question
+from app.services.store_errors import (
+    STORE_UNAVAILABLE,
+    vector_store_unavailable,
+)
 from app.services.vectorstore_service import VectorStoreService, get_vectorstore_service
 
 
@@ -85,12 +89,15 @@ class RAGService:
         Memory is an enhancement, not the product: an answer without prior
         follow-up context is a mild quality regression, whereas refusing to
         answer because the store is unreachable would be an outage. Only
-        connection-level failures are swallowed here; a bug in the store must
-        still surface as a 500.
+        Only store-unavailable failures are swallowed here - including a database
+        that answers and then refuses, which is what a paused Supabase project
+        does. That case used to escape as a 500 from THIS read, before retrieval
+        could raise its own 502. A bug in the store (a missing method, a bad
+        type) is not in that set and must still surface as a 500.
         """
         try:
             return await self.memory.get_messages(session_id)
-        except (OSError, ConnectionError):
+        except STORE_UNAVAILABLE:
             logger.warning(
                 "Conversation store unreachable reading history for session %s; "
                 "continuing with empty memory.",
@@ -108,7 +115,7 @@ class RAGService:
         """
         try:
             await self.memory.append_exchange(session_id, user_message, assistant_message)
-        except (OSError, ConnectionError):
+        except STORE_UNAVAILABLE:
             logger.warning(
                 "Conversation store unreachable appending exchange for session %s; "
                 "answer will be returned without being remembered.",
@@ -193,7 +200,7 @@ class RAGService:
         chunk_read_start = time.perf_counter()
         try:
             chunks = await self.vectorstore.list_video_chunks(video_id)
-        except (OSError, ConnectionError):
+        except STORE_UNAVAILABLE:
             logger.warning(
                 "Could not read chunks for %s; falling back to retrieval.",
                 video_id,
@@ -558,11 +565,27 @@ class RAGService:
         active_session_id = session_id or self.memory.create_session_id()
         history = await self._get_history(active_session_id)
         search_query = await self._contextualize(message, history)
-        retrieved_context = await self.vectorstore.similarity_search(
-            query=search_query,
-            limit=top_k,
-            video_id=video_id,
-        )
+        try:
+            retrieved_context = await self.vectorstore.similarity_search(
+                query=search_query,
+                limit=top_k,
+                video_id=video_id,
+            )
+        except STORE_UNAVAILABLE as exc:
+            # Retrieval fails LOUDLY - the deliberate opposite of conversation
+            # memory above, which degrades to an empty history. Memory is an
+            # enhancement; the transcript context IS the product, and answering
+            # without it would produce a confident reply from no source at all.
+            # Until 2026-08-21 this call was unguarded, so a store outage left
+            # through /api/chat and /api/agent/chat as a bare 500 with no CORS
+            # headers - the browser showed "Failed to fetch" and the carefully
+            # worded 502 in routes/vectorstore.py never reached the one path
+            # users are actually on.
+            logger.warning(
+                "Vector store unavailable during retrieval for video %s: %s",
+                video_id, exc, exc_info=True,
+            )
+            raise vector_store_unavailable() from exc
 
         return active_session_id, retrieved_context, history
 

@@ -1,6 +1,9 @@
 import asyncio
 
+import pytest
+from fastapi import HTTPException
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.analytics.schemas import ChatMetricCreate, RAGMetricCreate
 from app.core.config import settings
@@ -795,3 +798,91 @@ async def test_stream_answer_falls_back_to_retrieval_when_summarising_fails(monk
 
     assert service.vectorstore.last_query == "What is this video about?"
     assert events[-1].type == "done"
+
+
+class UnreachableStoreVectorStoreService:
+    """A store whose database answers the connection and then refuses the query."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SQLAlchemyError("server closed the connection unexpectedly"),
+        OSError("connection refused"),
+    ],
+    ids=["database refused the query", "socket-level failure"],
+)
+async def test_retrieval_failure_becomes_a_502_that_names_the_cause(error) -> None:  # noqa: ANN001
+    """Retrieval is the product, so it must fail loudly - and legibly.
+
+    AGENTS.md has claimed since the conversation-memory work that retrieval
+    "fails loudly with a 502", deliberately the opposite of memory, which
+    degrades. That was true of `routes/vectorstore.py` and was never true here -
+    `prepare_context` had no handling at all, so a store outage surfaced through
+    `/api/chat` and `/api/agent/chat` as a bare 500. Those two are the endpoints
+    the frontend uses; the route that had the good error message is not.
+
+    Both error shapes are covered because the distinction is what broke in
+    production on 2026-08-21: only the socket-level one is an OSError, and a
+    paused Supabase project raises the other.
+    """
+    service = RAGService(
+        config=settings,
+        vectorstore=UnreachableStoreVectorStoreService(error),
+        memory=InMemoryConversationStore(),
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.prepare_context(
+            message="what is a loop?", video_id="vid1", session_id=None, top_k=5
+        )
+
+    assert excinfo.value.status_code == 502
+    detail = excinfo.value.detail.lower()
+    assert "paused" in detail
+    # Must reassure that data is not gone: the fear on seeing this is that the
+    # ingested videos were lost, which would send someone re-ingesting for nothing.
+    assert "not lost" in detail
+
+
+async def test_a_paused_database_still_yields_502_even_though_memory_is_read_first() -> None:
+    """The realistic outage: ONE database, so every store fails at once.
+
+    prepare_context reads conversation history before it searches, so with a
+    paused database `_get_history` raises first. If that read does not treat a
+    Postgres-level error as an outage it escapes as a bare 500 and the 502 from
+    retrieval never runs - the fix below it would be dead code in the only
+    situation it was written for. Memory must degrade here (empty history) so
+    that retrieval can be the thing that fails, loudly and legibly.
+    """
+    class UnreachableConversationStore:
+        def create_session_id(self) -> str:
+            return "session-1"
+
+        async def get_messages(self, session_id):  # noqa: ANN001
+            raise SQLAlchemyError("server closed the connection unexpectedly")
+
+        async def append_exchange(self, session_id, user_message, assistant_message):  # noqa: ANN001
+            raise SQLAlchemyError("server closed the connection unexpectedly")
+
+    service = RAGService(
+        config=settings,
+        vectorstore=UnreachableStoreVectorStoreService(
+            SQLAlchemyError("server closed the connection unexpectedly")
+        ),
+        memory=UnreachableConversationStore(),
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.prepare_context(
+            message="what is a loop?", video_id="vid1", session_id=None, top_k=5
+        )
+
+    assert excinfo.value.status_code == 502
+    assert "paused" in excinfo.value.detail.lower()
