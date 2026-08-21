@@ -709,6 +709,18 @@ async def test_summary_records_real_retrieval_latency_not_zero(monkeypatch) -> N
         message="What is this video about?", video_id="vid1", session_id=None, top_k=5
     )
 
+    # Checked FIRST, because it is the only assertion that can explain the others.
+    # summarize_video swallows every failure and falls back to retrieval, where
+    # similarity_search returns instantly - so a fallback makes retrieval_latency
+    # about 1ms and the threshold below fails with a number instead of a reason.
+    # This test failed exactly that way once on 2026-08-21 and cost time to place;
+    # `last_query` is None if and only if similarity_search was never called, so
+    # asserting it here turns that flake into a message, and pytest prints the
+    # captured "Summarisation failed for vid1: ..." warning alongside it.
+    assert service.vectorstore.last_query is None, (
+        "summarisation fell back to retrieval - the captured log warning names the cause"
+    )
+
     assert len(recorder.rag_metrics) == 1
     metric = recorder.rag_metrics[0]
     # Threshold set well below the 0.02s (20ms) sleep, not at it: Windows'
