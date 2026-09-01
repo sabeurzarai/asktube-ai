@@ -294,8 +294,15 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   `backend/tests/fixtures/retrieval_eval_cases.json` against the deployed store.
   Operator-run — it needs `DATABASE_URL`, `OPENAI_API_KEY` and BOTH videos
   (`fWjsdhR3z3c`, Python tutorial; `sQK3Yr4Sc_k`, Crash Course photosynthesis)
-  already ingested. A missing video does not error — its cases just return
-  nothing and read as retrieval failures. The second video is deliberately as
+  already ingested. A `preflight` now refuses the run (exit code 2) when the
+  backend is not `pgvector`, when a fixture video has no chunks, or when the
+  store raises — because all three print output IDENTICAL to catastrophically
+  broken retrieval: every case `rank=-`, including the `off_topic` ones, which
+  cannot even compute a distance. **A missing `DATABASE_URL` derives the
+  in-memory backend and scored 0/29 on 2026-08-21**, which looks like a
+  measurement and is not one. Note the settings read `.env` relative to the
+  WORKING directory, so `backend/.env` is the file that counts, not the one in
+  the repo root. The second video is deliberately as
   far from programming as possible: with no shared vocabulary, a question the
   Python video answers scores 0.93 against the biology chunks, which is what
   makes the `bio-crossvideo-python` case meaningful — it checks that the

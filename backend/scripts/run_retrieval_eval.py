@@ -57,6 +57,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.core.config import settings
 from app.services.conversation_store import InMemoryConversationStore
 from app.services.rag_service import RAGService
+from app.services.vector_store.factory import resolve_vector_backend
 from app.services.vectorstore_service import get_vectorstore_service
 
 FIXTURE_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "retrieval_eval_cases.json"
@@ -144,6 +145,52 @@ def print_row(row: dict) -> None:
         print(f'{DIM}         gesucht mit: {row["query"]!r}{RESET}')
 
 
+async def preflight(video_ids: list[str]) -> str | None:
+    """Refuse to run when the store cannot answer, instead of scoring 0/29.
+
+    Both failures below produce output IDENTICAL to catastrophically broken
+    retrieval: every case reporting `rank=-`, including the off_topic ones,
+    which cannot even compute a distance. That reads as a measurement and is
+    not one - it cost real time to tell apart on 2026-08-21, when a missing
+    DATABASE_URL silently derived an empty in-memory store. Both tells are
+    cheap, so they are checked before the first case rather than inferred from
+    the wreckage afterwards.
+    """
+    backend = resolve_vector_backend(settings)
+    if backend != "pgvector":
+        return "\n".join([
+            f"  Der Speicher ist {backend!r}, nicht 'pgvector' - gesucht wurde also gegen",
+            "  einen leeren In-Memory-Speicher, nicht gegen den eingesetzten.",
+            "",
+            "  Ursache: DATABASE_URL ist nicht gesetzt. Gelesen wird sie aus backend/.env",
+            "  (relativ zum Arbeitsverzeichnis) oder aus der Umgebung.",
+        ])
+
+    store = get_vectorstore_service()
+    missing: list[str] = []
+    for video_id in video_ids:
+        try:
+            chunks = await store.list_video_chunks(video_id)
+        except Exception as exc:  # noqa: BLE001 - jede Stoerung heisst hier dasselbe
+            return "\n".join([
+                f"  Der Speicher antwortet nicht: {type(exc).__name__}: {exc}",
+                "",
+                "  Jedes Ergebnis waere jetzt eine Aussage ueber die Verbindung,",
+                "  nicht ueber die Retrieval-Qualitaet.",
+            ])
+        if not chunks:
+            missing.append(video_id)
+
+    if missing:
+        return "\n".join([
+            f"  Nicht ingestiert: {', '.join(missing)}",
+            "",
+            "  Die Faelle dieser Videos lieferten nichts zurueck und wuerden als",
+            "  Retrieval-Fehler gelesen. Erst ingestieren, dann messen.",
+        ])
+    return None
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Retrieval evaluation against the deployed store.")
     parser.add_argument("--frozen", action="store_true",
@@ -160,6 +207,13 @@ async def main() -> int:
         count = sum(1 for c in cases if c["video_id"] == video_id)
         print(f'  {video_id}  {count:>2} Faelle  {meta["title"][:48]}')
     print("  Beide Videos muessen im eingesetzten Store ingestiert sein.")
+
+    problem = await preflight(list(data["videos"]))
+    if problem:
+        print(f"\n{RED}  ABBRUCH - dies waere keine Messung gewesen{RESET}\n")
+        print(problem)
+        print(f"\n{'-' * 76}\n")
+        return 2
 
     rows = [await run_case(c, args.frozen) for c in cases]
 
