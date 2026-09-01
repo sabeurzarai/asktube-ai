@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="AskTube AI">
+  <!-- The product's claim in one glyph: a transcript, and the playhead parked on
+       the second an answer cites. Kept to two ideas because more turns to mush
+       at 16px — and the playhead CROSSES the lines rather than standing beside
+       them, which is what stops the mark reading as an exclamation point. -->
+  <rect width="32" height="32" rx="8" fill="hsl(224 45% 6%)"/>
+
+  <!-- the transcript: spans of unequal length, the way captions actually arrive -->
+  <g fill="hsl(217 91% 60%)">
+    <rect x="5" y="11" width="22" height="3" rx="1.5" opacity=".95"/>
+    <rect x="5" y="16.5" width="15" height="3" rx="1.5" opacity=".6"/>
+    <rect x="5" y="22" width="19" height="3" rx="1.5" opacity=".95"/>
+  </g>
+
+  <!-- the playhead: one moment, crossing every span it covers -->
+  <rect x="19.4" y="4.2" width="3" height="23.6" rx="1.5" fill="hsl(329 84% 60%)"/>
+  <circle cx="20.9" cy="5.4" r="3.4" fill="hsl(329 84% 60%)"/>
+</svg>
