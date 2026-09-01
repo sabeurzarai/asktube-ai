@@ -197,3 +197,46 @@ def test_a_database_failure_still_carries_cors_headers() -> None:
     app.dependency_overrides.clear()
 
     assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+def test_search_returns_502_when_the_pooler_does_not_know_the_tenant() -> None:
+    """The error production ACTUALLY raised, which the first fix did not catch.
+
+    On 2026-08-21 the deployed backend logged, per request:
+
+        asyncpg.exceptions.InternalServerError:
+            (ENOTFOUND) tenant/user postgres.<ref> not found
+
+    Two corrections came out of that. The cause was never "paused" - Supavisor
+    did not recognise the tenant at all, which is what happens when the project
+    behind DATABASE_URL no longer exists or the ref has changed. And the
+    exception escapes RAW: it is raised inside the pool's connect step, so
+    SQLAlchemy never wraps it, and asyncpg's PostgresError is a bare Exception
+    subclass - not SQLAlchemyError, not OSError. A tuple of those three would
+    still have produced the bare 500 this was written to remove.
+    """
+    from asyncpg.exceptions import InternalServerError
+
+    class FailingVectorStoreService:
+        async def similarity_search(self, query, limit=5, video_id=None):  # noqa: ANN001
+            raise InternalServerError("(ENOTFOUND) tenant/user postgres.abc123 not found")
+
+    app.dependency_overrides[get_vectorstore_service] = lambda: FailingVectorStoreService()
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/vectorstore/search",
+        params={"q": "anything"},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    detail = response.json()["detail"].lower()
+    # Must offer BOTH live causes, since the message cannot tell them apart and
+    # guessing one sent this investigation down the wrong path for an hour.
+    assert "paused" in detail
+    assert "no longer exist" in detail
+    # And it has to reach the browser at all.
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"

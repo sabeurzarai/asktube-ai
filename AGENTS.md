@@ -244,7 +244,15 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   raises as `SQLAlchemyError` — not an `OSError` — so a catch of
   `(OSError, ConnectionError)` missed the single case the message existed for.
   Symptom: `/health` 200, embeddings 200, and `GET /api/vectorstore/search` a
-  bare 500. **A bare 500 also loses CORS** (it propagates past `CORSMiddleware`),
+  bare 500. **The first fix still missed the real error**, and that is the part
+  worth remembering: production logged
+  `asyncpg.exceptions.InternalServerError: (ENOTFOUND) tenant/user postgres.<ref>
+  not found`, raised inside the pool's CONNECT step. SQLAlchemy wraps DBAPI
+  errors from execution, not from there, so it arrived raw — and asyncpg's
+  `PostgresError` descends straight from `Exception`. `STORE_UNAVAILABLE`
+  therefore includes it. The cause was not a pause either: the pooler did not
+  know the tenant at all, which is what a deleted or recreated project looks
+  like, so the 502 text now names both causes instead of guessing one. **A bare 500 also loses CORS** (it propagates past `CORSMiddleware`),
   so the browser shows only "Failed to fetch" and the message never reaches
   anyone — verified live, and pinned by
   `test_a_database_failure_still_carries_cors_headers`.
@@ -336,10 +344,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **311 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **312 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **307 passed, 5
+  local-embedding tests skip instead of running, giving **308 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

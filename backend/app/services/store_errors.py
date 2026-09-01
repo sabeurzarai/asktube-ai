@@ -22,23 +22,42 @@ Raising HTTPException keeps the response inside the middleware stack.
 from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 
+try:  # pragma: no cover - asyncpg ships with the Postgres backend
+    from asyncpg.exceptions import PostgresError
+except ImportError:  # SQLite-only installs have no asyncpg
+    PostgresError = ()
+
 # Everything that means "the store did not answer", including a database that
 # answered with a refusal. Used by BOTH store families, because they share one
-# DATABASE_URL: when it is paused, conversation history and vectors fail together.
+# DATABASE_URL: when it is down, conversation history and vectors fail together.
+#
+# PostgresError is here because of a measured miss, not for symmetry. The error
+# production raised - "(ENOTFOUND) tenant/user postgres.<ref> not found" - is an
+# asyncpg.exceptions.InternalServerError raised inside the connection pool's
+# connect step. SQLAlchemy wraps DBAPI errors from EXECUTION, not from that path,
+# so it arrived raw; and asyncpg's PostgresError descends straight from Exception.
+# A tuple of (OSError, ConnectionError, SQLAlchemyError) therefore still let the
+# real outage through as a bare 500 - the exact failure this module exists to
+# prevent, missed on the first attempt.
+#
 # ValueError is deliberately NOT here - a dimension mismatch is a different fault
 # with a different fix, handled at its own site. Neither are AttributeError or
 # TypeError: a backend missing a method is a bug and must still surface as a 500.
-STORE_UNAVAILABLE: tuple[type[BaseException], ...] = (
-    OSError,
-    ConnectionError,
-    SQLAlchemyError,
+STORE_UNAVAILABLE: tuple[type[BaseException], ...] = tuple(
+    e for e in (OSError, ConnectionError, SQLAlchemyError, PostgresError) if isinstance(e, type)
 )
 
 VECTOR_STORE_UNAVAILABLE_DETAIL = (
-    "Vector store unavailable. If DATABASE_URL points at Supabase, the project "
-    "may be paused - Free plan projects pause after 7 days of low activity and "
-    "must be restored from the dashboard. Videos already ingested are not lost; "
-    "they are read back once the database is running again."
+    "Vector store unavailable - the database did not answer. Two causes are "
+    "common and this message cannot tell them apart, so check both: the Supabase "
+    "project behind DATABASE_URL may be PAUSED (Free plan projects pause after 7 "
+    "days of low activity and are restored from the dashboard), or it may NO "
+    "LONGER EXIST at that reference - a deleted or recreated project leaves "
+    "DATABASE_URL pointing at a tenant the pooler does not know, which fails "
+    "identically from the outside. Compare the project ref in DATABASE_URL "
+    "against the dashboard. Videos already ingested are not lost; they are read "
+    "back once the database answers again. The server log carries the underlying "
+    "error."
 )
 
 
