@@ -19,6 +19,12 @@ def build_engine_kwargs(url: str, config: Settings) -> dict[str, Any]:
     if url.startswith("postgresql"):
         kwargs["pool_size"] = config.db_pool_size
         kwargs["max_overflow"] = config.db_max_overflow
+        # Retire connections on a timer instead of waiting to discover that the
+        # pooler already closed one. pool_pre_ping detects that case and
+        # reconnects, but only at the cost of a round trip per checkout, and only
+        # when the ping itself gets through. SQLite has no server to close
+        # anything, so this stays inside the Postgres branch.
+        kwargs["pool_recycle"] = config.db_pool_recycle
         # Prepared statements do not survive a transaction pooler, and disabling
         # asyncpg's own cache (statement_cache_size=0) is NOT enough on its own:
         # SQLAlchemy's asyncpg dialect keeps a second layer on top of that --

@@ -69,3 +69,30 @@ async def test_init_skips_create_all_on_postgres(monkeypatch):
     monkeypatch.setattr(db_module.settings, "database_url", "postgresql+asyncpg://u:p@h/db")
     await db_module.init_analytics_db()
     assert called["create_all"] is False
+
+
+def test_postgres_recycles_connections_before_the_pooler_drops_them():
+    """Supavisor closes idle client connections; SQLAlchemy must not outlive that.
+
+    Without pool_recycle a pooled connection can sit idle past the pooler's own
+    idle timeout, and the next checkout hands out something the server has
+    already closed. pool_pre_ping catches that and reconnects, so it is not
+    fatal - but it turns every such request into an extra round trip, and it
+    only helps when the ping itself succeeds. Recycling on a timer keeps
+    connections younger than the server's timeout instead of relying on the
+    detect-and-retry path.
+    """
+    config = Settings(_env_file=None)
+    kwargs = build_engine_kwargs("postgresql+asyncpg://u:p@host/db", config)
+
+    assert kwargs["pool_recycle"] == config.db_pool_recycle
+    # Must be a real bound, not "never": -1 is SQLAlchemy's disabled sentinel.
+    assert kwargs["pool_recycle"] > 0
+
+
+def test_sqlite_does_not_recycle():
+    """A local file has no server to close the connection underneath us."""
+    config = Settings(_env_file=None)
+    kwargs = build_engine_kwargs("sqlite+aiosqlite:///./data/analytics.db", config)
+
+    assert "pool_recycle" not in kwargs

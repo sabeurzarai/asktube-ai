@@ -286,7 +286,7 @@ AskTube AI/
 |   +-- tests/
 |   |   +-- fixtures/
 |   |   |   +-- rag_eval_cases.json  # 17 RAG evaluation cases
-|   |   +-- ...                   # 312 pytest tests total
+|   |   +-- ...                   # 315 pytest tests total
 |   +-- requirements.txt
 |   +-- Dockerfile                # Production build with ffmpeg
 |
@@ -361,7 +361,7 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 `transcript_service.py` fetches captions via `youtube-transcript-api` and cleans the raw segments. `chunking_service.py` splits the cleaned text into overlapping chunks using LangChain's splitter, preserving timestamp metadata on each chunk. This pipeline converts raw YouTube captions into retrieval-ready documents.
 
 ### Testing and Evaluation
-- **312 backend tests** (`cd backend && python -m pytest`) covering services, routes, tools, speech, WebSocket ingestion, retrieval quality and the agent pipeline, plus **79 frontend tests** (`cd frontend && npx tsc --noEmit && npm test`).
+- **315 backend tests** (`cd backend && python -m pytest`) covering services, routes, tools, speech, WebSocket ingestion, retrieval quality and the agent pipeline, plus **79 frontend tests** (`cd frontend && npx tsc --noEmit && npm test`).
 - **Answer-quality dataset**: `tests/fixtures/rag_eval_cases.json` - 15 hand-crafted RAG cases with expected answers and metadata. It scores ANSWERS: groundedness, citation quality, latency.
 - **Retrieval dataset**: `tests/fixtures/retrieval_eval_cases.json` - 29 conversation cases across **two deliberately unrelated videos** (a Python tutorial and a biology lecture), scored on whether the expected passage reaches the top-k. It measures a different stage: in the failure that motivated it, the answer was faithfully grounded in the chunks it received - the wrong chunks had been retrieved, which no answer-quality score can see. `scripts/run_retrieval_eval.py --frozen` runs it deterministically; `tests/test_retrieval_eval_fixture.py` validates the fixture offline, with no database and no API key.
 - **CLI runner**: `scripts/run_evaluation.py` executes the evaluation dataset against the live backend and reports per-case scores.

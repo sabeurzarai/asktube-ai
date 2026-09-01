@@ -83,8 +83,17 @@ test-environment quirks). Add new lessons there, one dated bullet each.
   upgrade head`. `init_analytics_db()` auto-creates tables for SQLite only.
   Migrations are a manual pre-deploy step — the Docker image ships `alembic.ini`
   and `alembic/`, but nothing runs them automatically at container start.
-  Every Postgres engine (app AND Alembic, unconditionally — not just when a
-  pooler is in front) sets three asyncpg connect args: `statement_cache_size=0`,
+  Every Postgres engine (app AND Alembic) is now built from
+  `build_engine_kwargs` — the vector store and conversation store used to
+  hand-roll their own and set only ONE of the three connect args below, while
+  that function's comment claimed all three were applied everywhere. The claim
+  was false for exactly the two engines the product depends on, and the
+  collision the missing args prevent surfaces intermittently under load rather
+  than at startup. It also sets `pool_recycle` (`DB_POOL_RECYCLE`, default 300s)
+  so a connection is retired on a timer instead of being discovered dead by
+  `pool_pre_ping` — that path works, but costs a round trip per checkout and
+  only helps when the ping itself gets through. The three asyncpg connect args,
+  unconditionally — not just when a pooler is in front: `statement_cache_size=0`,
   `prepared_statement_cache_size=0`, and a UUID-based
   `prepared_statement_name_func`. `statement_cache_size=0` alone is NOT enough —
   it only disables asyncpg's own cache, while SQLAlchemy's asyncpg dialect keeps
@@ -344,10 +353,10 @@ test-environment quirks). Add new lessons there, one dated bullet each.
 
 ## Testing (verify before claiming done)
 
-- Backend: `cd backend && python -m pytest` → expect **312 passed, 1 skipped**
+- Backend: `cd backend && python -m pytest` → expect **315 passed, 1 skipped**
   with local-embedding extras installed (the 1 skip is the Alembic migration
   test, which skips unless `TEST_DATABASE_URL` is set). Without the extras the 4
-  local-embedding tests skip instead of running, giving **308 passed, 5
+  local-embedding tests skip instead of running, giving **311 passed, 5
   skipped** — derived from the measured number, not separately measured. Set
   `OPENAI_API_KEY` to any dummy value first or 9 speech tests fail with 503.
   The WARNING count is **not** a regression signal: `test_speech_route.py`

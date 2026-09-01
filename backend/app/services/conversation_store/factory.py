@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.analytics.database import build_engine_kwargs
+
 from app.core.config import Settings
 from app.services.conversation_store.base import ConversationStore
 from app.services.conversation_store.memory import InMemoryConversationStore
@@ -30,14 +32,11 @@ def create_conversation_store(config: Settings) -> ConversationStore:
             raise ValueError(
                 "CONVERSATION_BACKEND=postgres requires DATABASE_URL to be set."
             )
+        # Shared options - see the note in vector_store/factory.py. This engine
+        # had the same drift: one of the three required asyncpg connect args.
         engine = create_async_engine(
             config.database_url,
-            pool_size=config.db_pool_size,
-            max_overflow=config.db_max_overflow,
-            pool_pre_ping=True,
-            # Prepared statements do not survive a transaction pooler; left enabled
-            # this fails intermittently under concurrency rather than at startup.
-            connect_args={"statement_cache_size": 0},
+            **build_engine_kwargs(config.database_url, config),
         )
         factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         return PostgresConversationStore(factory)

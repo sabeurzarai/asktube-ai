@@ -1,5 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.analytics.database import build_engine_kwargs
+
 from app.core.config import Settings
 from app.services.vector_store.base import VectorStore
 from app.services.vector_store.memory import InMemoryVectorStore
@@ -37,12 +39,15 @@ def create_vector_store(config: Settings) -> VectorStore:
             raise ValueError(
                 "VECTOR_BACKEND=pgvector requires DATABASE_URL to be set."
             )
+        # Built from the SHARED options rather than hand-rolled. This engine used
+        # to set statement_cache_size alone, while build_engine_kwargs sets three
+        # connect args and claims, in its own comment, to apply them to "every
+        # Postgres engine this app builds". That claim was false for exactly the
+        # two engines the product depends on, and the collision the other two
+        # args prevent surfaces intermittently under load, not at startup.
         engine = create_async_engine(
             config.database_url,
-            pool_size=config.db_pool_size,
-            max_overflow=config.db_max_overflow,
-            pool_pre_ping=True,
-            connect_args={"statement_cache_size": 0},
+            **build_engine_kwargs(config.database_url, config),
         )
         factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
         return PgVectorStore(factory)

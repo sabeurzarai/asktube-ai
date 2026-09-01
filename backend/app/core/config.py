@@ -149,6 +149,15 @@ class Settings(BaseSettings):
         alias="DB_MAX_OVERFLOW",
         description="Additional connections allowed beyond db_pool_size under burst.",
     )
+    db_pool_recycle: int = Field(
+        default=300,
+        alias="DB_POOL_RECYCLE",
+        description=(
+            "Seconds after which a pooled connection is discarded and reopened. "
+            "Kept below Supavisor's idle timeout so SQLAlchemy retires a connection "
+            "before the pooler closes it underneath us."
+        ),
+    )
     analytics_enabled: bool = Field(default=True, alias="ANALYTICS_ENABLED")
     prometheus_enabled: bool = Field(default=True, alias="PROMETHEUS_ENABLED")
     langchain_tracing_v2: bool | None = Field(default=None, alias="LANGCHAIN_TRACING_V2")
