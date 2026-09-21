@@ -40,6 +40,8 @@ HALLUCINATION_RISK_THRESHOLD=0.35
 RAG_EVALUATOR_MODE=heuristic
 ```
 
+`RAG_EVALUATOR_MODE` is accepted but not read: scoring is always heuristic, and there is no LLM-as-judge mode.
+
 `LANGCHAIN_TRACING_V2` and `LANGCHAIN_PROJECT` are also supported for compatibility with LangChain's own tracing settings. Set `LANGSMITH_TRACING=false` for local development without tracing.
 
 ---

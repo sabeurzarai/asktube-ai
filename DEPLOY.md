@@ -63,9 +63,10 @@ the `+cpu` line) in that file before building. With the default
 `EMBEDDING_PROVIDER=openai`, the slim image builds on both architectures and no
 torch is installed at all.
 
-### Path B — Vercel + Render (fallback)
+### Path B — Vercel + Render (what the live demo runs)
 
-Use only if Oracle signup or capacity fails. Honest tradeoffs up front:
+This is the path the live demo runs (see "Current live demo setup" below).
+Honest tradeoffs up front:
 - **A card is required** by Render despite the "free" tier.
 - Services **spin down after 15 idle minutes** with 30–60 s cold starts.
 - **No persistent disk** — but this no longer costs you the demo. Transcript
@@ -82,8 +83,9 @@ Use only if Oracle signup or capacity fails. Honest tradeoffs up front:
 - **Frontend → Vercel.** Import the repo, set root to `frontend/`, framework
   Next.js. Set `NEXT_PUBLIC_API_URL` to the Render backend URL **at build time**
   (Next.js bakes it into the bundle). Add the Vercel URL to backend `CORS_ORIGINS`.
-- **Backend → Render.** Web service from `backend/`, start command
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Set all `.env` vars, plus
+- **Backend → Render.** Web service from `backend/` with the **Docker** runtime —
+  the Dockerfile installs ffmpeg, which the Whisper fallback needs; a native
+  Python service would lack it. Set `PORT=8000`. Set all `.env` vars, plus
   `DATABASE_URL=postgresql+asyncpg://...` pointing at your managed Postgres.
   There is no second service to run: that one variable selects the pgvector
   store, the Postgres conversation store and Postgres analytics at once. Run
