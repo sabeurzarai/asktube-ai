@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -120,10 +120,6 @@ class Settings(BaseSettings):
     hallucination_risk_threshold: float = Field(
         default=0.35,
         alias="HALLUCINATION_RISK_THRESHOLD",
-    )
-    rag_evaluator_mode: Literal["heuristic", "llm"] = Field(
-        default="heuristic",
-        alias="RAG_EVALUATOR_MODE",
     )
     analytics_database_url: str = Field(
         default="sqlite+aiosqlite:///./data/analytics.db",

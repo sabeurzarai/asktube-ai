@@ -172,7 +172,6 @@ is lost on restart.
    CHUNK_MAX_CHARS=600
    CHUNK_OVERLAP_SEGMENTS=1
    AUDIO_CACHE_DIR=/app/data/audio_cache
-   RAG_EVALUATOR_MODE=heuristic
    HALLUCINATION_RISK_THRESHOLD=0.35
    ```
 7. Copy the **service URL** (e.g. `https://asktube-backend.onrender.com`)
@@ -365,7 +364,7 @@ Gradio and Streamlit are designed for rapid ML demos. AskTube AI targets a produ
 - **Answer-quality dataset**: `tests/fixtures/rag_eval_cases.json` - 15 hand-crafted single-turn cases plus 2 conversation cases (17 in total), with expected answers and metadata. It scores ANSWERS: groundedness, citation quality, latency.
 - **Retrieval dataset**: `tests/fixtures/retrieval_eval_cases.json` - 29 conversation cases across **two deliberately unrelated videos** (a Python tutorial and a biology lecture), scored on whether the expected passage reaches the top-k. It measures a different stage: in the failure that motivated it, the answer was faithfully grounded in the chunks it received - the wrong chunks had been retrieved, which no answer-quality score can see. `scripts/run_retrieval_eval.py --frozen` runs it deterministically; `tests/test_retrieval_eval_fixture.py` validates the fixture offline, with no database and no API key.
 - **CLI runner**: `scripts/run_evaluation.py` executes the evaluation dataset against the live backend and reports per-case scores.
-- **Inline heuristic metrics**: every RAG answer records citation coverage, token estimates, response length and a hallucination warning to the analytics store (shown on the `/analytics` dashboard). They are not part of the chat response; `POST /api/evaluations/rag` returns heuristic scores for a single question. `RAG_EVALUATOR_MODE` is accepted but not read — scoring is always heuristic, and there is no LLM-as-judge mode.
+- **Inline heuristic metrics**: every RAG answer records citation coverage, token estimates, response length and a hallucination warning to the analytics store (shown on the `/analytics` dashboard). They are not part of the chat response; `POST /api/evaluations/rag` returns heuristic scores for a single question. Scoring is always heuristic — there is no LLM-as-judge mode.
 - **LangSmith tracing** (optional, `LANGSMITH_TRACING=true`) captures full chain traces for offline evaluation.
 
 ### Analytics and Observability

@@ -37,10 +37,9 @@ LANGSMITH_PROJECT=AskTube-AI
 LANGSMITH_EVAL_PROJECT=AskTube-AI-Evals
 LANGSMITH_LATENCY_BUDGET_MS=8000
 HALLUCINATION_RISK_THRESHOLD=0.35
-RAG_EVALUATOR_MODE=heuristic
 ```
 
-`RAG_EVALUATOR_MODE` is accepted but not read: scoring is always heuristic, and there is no LLM-as-judge mode.
+Scoring is always heuristic; there is no LLM-as-judge mode. `RAG_EVALUATOR_MODE` was a setting no code ever read and was removed on 2026-09-23.
 
 `LANGCHAIN_TRACING_V2` and `LANGCHAIN_PROJECT` are also supported for compatibility with LangChain's own tracing settings. Set `LANGSMITH_TRACING=false` for local development without tracing.
 
@@ -111,7 +110,7 @@ The heuristic evaluator checks:
 
 Returns a `hallucination_risk` score from `0.0` to `1.0`. Lower is better. Threshold is `HALLUCINATION_RISK_THRESHOLD` (default 0.35).
 
-**Note on heuristic accuracy:** The term-overlap scorer is conservative - it flags paraphrased-but-correct answers as moderate risk because the exact terms differ from the retrieved chunks. Set `RAG_EVALUATOR_MODE=llm` to use an LLM-based evaluator for higher-accuracy scoring (requires additional API calls).
+**Note on heuristic accuracy:** The term-overlap scorer is conservative - it flags paraphrased-but-correct answers as moderate risk because the exact terms differ from the retrieved chunks. Scoring is always heuristic; an LLM-based evaluator does not exist.
 
 ---
 
