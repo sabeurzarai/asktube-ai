@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import requests
 from fastapi import HTTPException
 from youtube_transcript_api import CouldNotRetrieveTranscript, IpBlocked, RequestBlocked
 
@@ -105,6 +106,62 @@ async def test_blocked_request_WITH_a_proxy_does_not_tell_you_to_configure_one()
     # It must NOT claim a retry is pointless: with a rotating proxy each
     # attempt draws a new exit IP, which is why the service retries at all.
     assert "will fail the same way" not in detail.lower()
+
+
+PROXY_REFUSED = requests.exceptions.ProxyError(
+    "Unable to connect to proxy: Tunnel connection failed: 404 Not Found"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_proxy_that_refuses_the_tunnel_falls_back_to_a_direct_request() -> None:
+    """Measured on 2026-11-04: Webshare answered CONNECT www.youtube.com with
+    `404 Not Found` for every username suffix while tunnelling example.com fine -
+    the proxy, not YouTube, was refusing. That raised requests' ProxyError, which
+    is not a CouldNotRetrieveTranscript, so it escaped as a bare 500. A direct
+    request worked from the same machine, so the proxy was the only obstacle."""
+    calls: list[bool] = []
+
+    def proxy_refused_then_direct_ok(self, video_id, language, use_proxy=True):  # noqa: ANN001, ARG001
+        calls.append(use_proxy)
+        if use_proxy:
+            raise PROXY_REFUSED
+        return "the transcript"
+
+    service = TranscriptService(
+        Settings(_env_file=None, webshare_proxy_url="http://user:pass@p.webshare.io:80")
+    )
+
+    with patch.object(TranscriptService, "_fetch_youtube_transcript", proxy_refused_then_direct_ok):
+        result = await service.get_transcript("vid123", TranscriptFetchOptions())
+
+    assert result == "the transcript"
+    assert calls == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_a_refusing_proxy_with_a_blocked_direct_path_blames_the_proxy() -> None:
+    """When the direct fallback is blocked too (a datacenter host), the 502 must
+    say the PROXY failed. Telling the operator YouTube blocked the proxy pool
+    sends them to rotate usernames, which cannot fix a proxy-side refusal."""
+    def proxy_refused_direct_blocked(self, video_id, language, use_proxy=True):  # noqa: ANN001, ARG001
+        if use_proxy:
+            raise PROXY_REFUSED
+        raise RequestBlocked(video_id)
+
+    service = TranscriptService(
+        Settings(_env_file=None, webshare_proxy_url="http://user:pass@p.webshare.io:80")
+    )
+
+    with patch.object(TranscriptService, "_fetch_youtube_transcript", proxy_refused_direct_blocked):
+        with pytest.raises(HTTPException) as excinfo:
+            await service.get_transcript("vid123", TranscriptFetchOptions())
+
+    assert excinfo.value.status_code == 502
+    detail = excinfo.value.detail.lower()
+    assert "proxy itself" in detail
+    assert "404 not found" in detail
+    assert "webshare dashboard" in detail
 
 
 def test_normalize_youtube_segments() -> None:

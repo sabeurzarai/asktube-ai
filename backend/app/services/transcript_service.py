@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import requests
 from fastapi import HTTPException, status
 from openai import AsyncOpenAI, OpenAIError
 from youtube_transcript_api import (
@@ -47,7 +49,12 @@ class TranscriptService:
         options: TranscriptFetchOptions,
     ) -> TranscriptResponse:
         try:
-            return await self._fetch_with_block_retries(video_id, options.language)
+            try:
+                return await self._fetch_with_block_retries(video_id, options.language)
+            except requests.exceptions.ProxyError as proxy_exc:
+                return await self._fetch_direct_after_proxy_failure(
+                    video_id, options.language, proxy_exc
+                )
         except (NoTranscriptFound, TranscriptsDisabled):
             if not options.use_whisper_fallback:
                 raise HTTPException(
@@ -100,6 +107,30 @@ class TranscriptService:
 
         raise AssertionError("unreachable: the loop either returns or raises")
 
+    async def _fetch_direct_after_proxy_failure(
+        self, video_id: str, language: str, proxy_exc: requests.exceptions.ProxyError
+    ) -> TranscriptResponse:
+        """The proxy itself refused (e.g. Webshare answering CONNECT with 404),
+        so YouTube never saw the request. A direct attempt costs one request and
+        succeeds wherever the host IP is not blocked (local development); if it is
+        blocked too, the 502 names the proxy, since rotating usernames cannot fix
+        a proxy-side refusal.
+        """
+        logger.warning(
+            "Proxy refused the transcript request for %s (%s); trying a direct request.",
+            video_id,
+            _proxy_error_reason(proxy_exc),
+        )
+        try:
+            return await asyncio.to_thread(
+                self._fetch_youtube_transcript, video_id, language, use_proxy=False
+            )
+        except (RequestBlocked, IpBlocked, requests.exceptions.RequestException) as direct_exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=_proxy_failed_detail(proxy_exc),
+            ) from direct_exc
+
     def _blocked_detail(self) -> str:
         """Explain the block without asserting a cause that was never checked.
 
@@ -130,9 +161,12 @@ class TranscriptService:
             "the database and never touch YouTube."
         )
 
-    def _fetch_youtube_transcript(self, video_id: str, language: str) -> TranscriptResponse:
+    def _fetch_youtube_transcript(
+        self, video_id: str, language: str, use_proxy: bool = True
+    ) -> TranscriptResponse:
         # youtube-transcript-api v1.x: instantiate the API, use .list() instead of .list_transcripts()
-        ytt = YouTubeTranscriptApi(proxy_config=self._build_youtube_proxy_config())
+        proxy_config = self._build_youtube_proxy_config() if use_proxy else None
+        ytt = YouTubeTranscriptApi(proxy_config=proxy_config)
         transcript_list = ytt.list(video_id)
 
         try:
@@ -259,6 +293,25 @@ class TranscriptService:
             filter_ip_locations=self.config.webshare_proxy_location_list or None,
             retries_when_blocked=5,
         )
+
+
+def _proxy_error_reason(exc: requests.exceptions.ProxyError) -> str:
+    """The proxy's own answer (e.g. 'Tunnel connection failed: 404 Not Found'),
+    without the full URL repr - which would carry the proxy credentials."""
+    match = re.search(r"Tunnel connection failed: [^'\")]+", str(exc))
+    return match.group(0) if match else type(exc).__name__
+
+
+def _proxy_failed_detail(exc: requests.exceptions.ProxyError) -> str:
+    return (
+        "The transcript request never reached YouTube: the proxy itself refused "
+        f"to connect ({_proxy_error_reason(exc)}), and a direct request from this "
+        "server was blocked too. Rotating the proxy username will not help - check "
+        "the Webshare dashboard (Stats > Errors for 'forbidden_host', bandwidth "
+        "left, subscription status) or switch proxy type/provider in "
+        "WEBSHARE_PROXY_URL. Videos already ingested are unaffected: they are "
+        "served from the database and never touch YouTube."
+    )
 
 
 def normalize_youtube_segments(raw_segments: list[Any]) -> list[TranscriptSegment]:
